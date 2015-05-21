@@ -38,6 +38,17 @@ _
             schema => 'str*',
             req => 1,
             pos => 0,
+            #tags => ['category:input'],
+        },
+        output_file => {
+            summary => 'Set output file, defaults to stdout',
+            schema => 'str*',
+            'x.schema.entity' => 'filename',
+            cmdline_aliases => {o=>{}},
+            tags => ['category:output'],
+        },
+        overwrite => {
+            schema => 'bool',
         },
     },
 };
@@ -48,24 +59,49 @@ sub gen_inline_pericmd_script {
     $url =~ m!\A(?:pl:)?((?:/[^/]+)+)/([^/]+)\z!
         or return [412, "URL scheme not supported, only local Perl URL ".
                        "currently supported"];
-    my ($mod_pm, $func_name) = @_;
+    my ($mod_pm, $func_name) = ($1, $2);
+    $mod_pm =~ s!\A/!!;
     (my $mod = $mod_pm) =~ s!/!::!g;
     $mod_pm .= ".pm";
 
-    require $mod_pm;
-
-    my $func_ref;
     my $meta;
+  GET_META:
     {
         no strict 'refs';
+        require $mod_pm;
         $meta = ${"$mod\::SPEC"}{$func_name}
             or return [412, "Can't find meta for URL '$url'"];
         defined &{"$mod\::$func_name"}
             or return [412, "Can't find function for URL '$url'"];
-        $func_ref = \&{"$mod\::$func_name"};
+        require Perinci::Sub::Normalize;
+        Perinci::Sub
     }
 
-    [200];
+    my @script;
+
+  WRITE_OUTPUT:
+    {
+        my ($fh, $output_is_stdout);
+        if (!defined($args{output_file}) || $args{output_file} eq '-') {
+            $output_is_stdout++;
+        } else {
+            if (-f $args{output_file}) {
+                return [412, "Output file '$args{output_file}' exists, ".
+                            "won't overwrite (see --overwrite)"]
+                    unless $args{overwrite};
+            }
+                open $fh, ">", $args{output_file}
+                    or return [500, "Can't open $args{output_file}: $!"];
+        }
+
+        if ($output_is_stdout) {
+            return [200, "OK", $script, {'cmdline.skip_format'=>1}];
+        } else {
+            print $fh $script;
+            close $fh or return [500, "Can't write $args{output_file}: $!"];
+            return [200, "OK"];
+        }
+    }
 }
 
 1;
