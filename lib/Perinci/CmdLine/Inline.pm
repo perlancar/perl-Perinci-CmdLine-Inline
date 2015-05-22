@@ -43,9 +43,19 @@ Currently it only supports a subset of features compared to other
 
 * No tab completion;
 
+* No subcommands support yet;
+
 * No support for streaming input or output;
 
 * and so on.
+
+TODO:
+
+* Supply default for function arguments.
+
+* Option to validate argument (using periswrap).
+
+* Supply function argument from positional cli arg.
 
 _
     args => {
