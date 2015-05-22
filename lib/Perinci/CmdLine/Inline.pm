@@ -458,6 +458,13 @@ _
         push @l, 'print $fres;', "\n";
         push @l, "}\n\n";
 
+        # generate code to exit with code
+        push @l, "# exit\n\n";
+        push @l, "{\n";
+        push @l, 'my $status = $_pci_r->{res}[0];', "\n";
+        push @l, 'exit($status =~ /200|304/ ? 0 : ($status-300));', "\n";
+        push @l, "}\n\n";
+
         # embed Data::Check::Structure 0.03
         $cd->{embedded_packages}{'Data::Check::Structure'} = <<'_';
 package Data::Check::Structure;
