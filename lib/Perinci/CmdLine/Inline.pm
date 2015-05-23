@@ -7,6 +7,8 @@ use 5.010001;
 use strict;
 use warnings;
 
+use Data::Dmp;
+
 use Exporter qw(import);
 our @EXPORT_OK = qw(gen_inline_pericmd_script);
 
@@ -47,15 +49,18 @@ Currently it only supports a subset of features compared to other
 
 * No support for streaming input or output;
 
+* No support for cmdline_src argument specification property;
+
+* No support for per_arg_yaml (not used as often as per_arg_json, no core module
+  for parsing YAML).
+
 * and so on.
 
 TODO:
 
-* Supply default for function arguments.
-
 * Option to validate argument (using periswrap).
 
-* Supply function argument from positional cli arg.
+* Support per_arg_json.
 
 _
     args => {
@@ -84,6 +89,16 @@ _
         program_name => {
             schema => 'str*',
         },
+        validate_args => {
+            summary => 'Whether to validate arguments using schemas',
+            schema  => 'bool',
+            default => 1,
+        },
+        #validate_result => {
+        #    summary => 'Whether to validate result using schemas',
+        #    schema  => 'bool',
+        #    default => 1,
+        #},
 
         with_debug => {
             summary => 'Generate script with debugging outputs',
@@ -112,6 +127,8 @@ _
 sub gen_inline_pericmd_script {
     my %args = @_;
 
+    my $validate_args = $args{validate_args} // 1;
+    #my $validate_result = $args{validate_result} // 1;
     my $program_name = $args{program_name};
 
     my $meta;
@@ -164,6 +181,7 @@ sub gen_inline_pericmd_script {
     my $cd = {
         modules => {},
         vars => {},
+        subs => {},
         embedded_packages => {},
     };
 
@@ -188,14 +206,26 @@ sub gen_inline_pericmd_script {
             $shebang_line .= "\n" unless $shebang_line =~ /\R\z/;
         }
 
-        push @l, "# common routines\n\n";
-        push @l, 'sub _pci_err { my $res = shift; print STDERR "ERROR $res->[0]: $res->[1]\n"; exit $res->[0]-300 }', "\n";
-        push @l, 'sub _pci_debug { no warnings "once"; require Data::Dumper; local $Data::Dumper::Terse = 1; local $Data::Dumper::Indent = 0; print "DEBUG: "; for (@_) { if (ref($_)) { print Data::Dumper::Dumper($_) } else { print $_ } } print "\n" }', "\n" if $args{with_debug};
+        $cd->{subs}{_pci_err} = <<'_';
+    my $res = shift;
+    print STDERR "ERROR $res->[0]: $res->[1]\n";
+    exit $res->[0]-300;
+_
 
-        push @l, <<'_';
-# from List::MoreUtils 0.401
-sub _pci_firstidx (&@)
-{
+        $cd->{subs}{_pci_debug} = <<'_' if $args{with_debug};
+    no warnings "once";
+    require Data::Dumper;
+    local $Data::Dumper::Terse = 1;
+    local $Data::Dumper::Indent = 0;
+    print "DEBUG: ";
+    for (@_) {
+        if (ref($_)) { print Data::Dumper::Dumper($_) } else { print $_ }
+    }
+    print "\n";
+_
+
+        # from List::MoreUtils 0.401
+        $cd->{subs}{_pci_firstidx} = ['&@', <<'_'];
     my $f = shift;
     foreach my $i ( 0 .. $#_ )
     {
@@ -203,30 +233,25 @@ sub _pci_firstidx (&@)
         return $i if $f->();
     }
     return -1;
-}
-
-sub _pci_json {
+_
+        $cd->{subs}{_pci_json} = <<'_';
      state $json = do {
         # XXX try JSON::XS first, fallback to JSON::PP
         require JSON::PP;
         JSON::PP->new->canonical(1)->allow_nonref;
     };
     $json;
-}
 _
 
         {
             require Data::Clean::JSON;
             my $cleanser = Data::Clean::JSON->get_cleanser;
             my $src = $cleanser->{src};
-            $src =~ s/^sub \{/sub _pci_clean_json_inplace { require Scalar::Util; /;
-            push @l, "\n$src\n\n";
+            $cd->{subs}{_pci_clean_json_inplace} = "require Scalar::Util; $src";
         }
 
-        # borrowed from Perinci::CmdLine::Lite 1.13, implement our own
-        # List::MoreUtils' firstidx
-        push @l, <<'_';
-sub _pci_gen_table {
+        # borrowed from Perinci::CmdLine::Lite 1.13, use our own firstidx
+        $cd->{subs}{_pci_gen_table} = <<'_';
     my ($data, $header_row, $resmeta, $is_pretty) = @_;
 
     $resmeta //= {};
@@ -245,7 +270,7 @@ sub _pci_gen_table {
         # from env)
         my $tcos;
         if ($ENV{FORMAT_PRETTY_TABLE_COLUMN_ORDERS}) {
-            $tcos = _pci_json->decode($ENV{FORMAT_PRETTY_TABLE_COLUMN_ORDERS});
+            $tcos = _pci_json()->decode($ENV{FORMAT_PRETTY_TABLE_COLUMN_ORDERS});
         } elsif (my $rfos = ($resmeta->{'cmdline.format_options'} //
                                  $resmeta->{format_options})) {
             my $rfo = $rfos->{'text-pretty'} // $rfos->{text} // $rfos->{any};
@@ -301,9 +326,9 @@ sub _pci_gen_table {
         shift @$data if $header_row;
         join("", map {join("\t", @$_)."\n"} @$data);
     }
-}
+_
 
-sub _pci_format_result {
+        $cd->{subs}{_pci_format_result} = <<'_';
     my $r = shift;
 
     my $res    = $r->{res};
@@ -363,14 +388,67 @@ sub _pci_format_result {
         unless $format =~ /\Ajson(-pretty)?\z/;
     _pci_clean_json_inplace($res);
     if ($format eq 'json') {
-        return _pci_json->encode($res) . "\n";
+        return _pci_json()->encode($res) . "\n";
     } else {
-        return _pci_json->canonical(1)->pretty->encode($res);
+        return _pci_json()->canonical(1)->pretty->encode($res);
     }
-}
-
 _
-        push @l, "\n";
+
+        require Perinci::Sub::GetArgs::Argv;
+        my $ggl_res = Perinci::Sub::GetArgs::Argv::gen_getopt_long_spec_from_meta(
+            meta => $meta,
+            meta_is_normalized => 1,
+            common_opts => \%copts,
+        );
+        return [500, "Can't generate Getopt::Long spec from meta: ".
+                    "$ggl_res->[0] - $ggl_res->[1]"]
+            unless $ggl_res->[0] == 200;
+
+        # gen function to check arguments
+        {
+            my @l2;
+            push @l2, '    my $args = shift;', "\n";
+            my $args_prop = $meta->{args} // {};
+
+            push @l2, "  FILL_FROM_POS: {\n";
+            for my $arg (sort {
+                ($args_prop->{$b}{pos} // 9999) <=>
+                    ($args_prop->{$a}{pos} // 9999)
+                } keys %$args_prop) {
+                my $arg_spec = $args_prop->{$arg};
+                my $arg_opts = $ggl_res->[3]{'func.opts_by_arg'}{$arg};
+                next unless defined $arg_spec->{pos};
+                push @l2, '        if (@ARGV > '.$arg_spec->{pos}.') {';
+                push @l2, ' if (exists $_pci_args{"'.$arg.'"}) {';
+                push @l2, ' return [400, "You specified '.$arg_opts->[0].' but also argument #'.$arg_spec->{pos}.'"];';
+                push @l2, " } else {";
+                if ($arg_spec->{greedy}) {
+                    push @l2, ' $_pci_args{"'.$arg.'"} = [splice(@ARGV, '.$arg_spec->{pos}.')];';
+                } else {
+                    push @l2, ' $_pci_args{"'.$arg.'"} = delete($ARGV['.$arg_spec->{pos}.']);';
+                }
+                push @l2, " }";
+                push @l2, " }\n";
+            }
+            push @l2, "    }\n";
+
+            push @l2, '    # fill defaults', "\n";
+            for my $arg (sort keys %$args_prop) {
+                my $arg_spec = $args_prop->{$arg};
+                next unless exists($arg_spec->{default}) || exists($arg_spec->{schema}[1]{default});
+                push @l2, '    unless (exists $_pci_args{"'.$arg.'"}) {';
+                if (exists $arg_spec->{default}) {
+                    push @l2, ' $_pci_args{"'.$arg.'"} //= '.dmp($arg_spec->{default}).';';
+                }
+                if (exists $arg_spec->{schema}[1]{default}) {
+                    push @l2, ' $_pci_args{"'.$arg.'"} //= '.dmp($arg_spec->{schema}[1]{default}).';';
+                }
+                push @l2, " }\n";
+            }
+            push @l2, "\n";
+            push @l2, '[200,"OK"]', "\n";
+            $cd->{subs}{_pci_check_args} = join('', @l2);
+        }
 
         $cd->{vars}{'$_pci_r'}++;
         push @l, '$_pci_r = { format=>"text", naked_res=>0, };', "\n\n";
@@ -383,20 +461,9 @@ _
         push @l, 'my %mentioned_args;', "\n";
         push @l, qq[Getopt::Long::Configure("bundling", "no_ignore_case");\n];
         {
-            require Data::Dmp;
-            require Perinci::Sub::GetArgs::Argv;
-            my $res = Perinci::Sub::GetArgs::Argv::gen_getopt_long_spec_from_meta(
-                meta => $meta,
-                meta_is_normalized => 1,
-                common_opts => \%copts,
-            );
-            return [500, "Can't generate Getopt::Long spec from meta: ".
-                        "$res->[0] - $res->[1]"]
-                unless $res->[0] == 200;
-
             push @l, 'my $go_spec = {', "\n";
-            for my $go_spec (sort keys %{ $res->[2] }) {
-                my $specmeta = $res->[3]{'func.specmeta'}{$go_spec};
+            for my $go_spec (sort keys %{ $ggl_res->[2] }) {
+                my $specmeta = $ggl_res->[3]{'func.specmeta'}{$go_spec};
                 push @l, "    '$go_spec' => sub {\n";
                 if ($specmeta->{common_opt}) {
                     if ($specmeta->{common_opt} eq 'help') {
@@ -408,7 +475,7 @@ _
                         );
                         return [500, "Can't generate help: $res->[0] - $res->[1]"]
                             unless $res->[0] == 200;
-                        push @l, '        print ', Data::Dmp::dmp($res->[2]), '; exit 0;', "\n";
+                        push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
                     } elsif ($specmeta->{common_opt} eq 'version') {
                         push @l, '        print "', $program_name , ' version ',
                             ($mod && ${"$mod\::VERSION"} ? ${"$mod\::DATE"} : '?'),
@@ -448,7 +515,10 @@ _
             push @l, "};\n";
             push @l, 'my $res = Getopt::Long::GetOptions(%$go_spec);', "\n";
             push @l, '_pci_err([500, "GetOptions failed"]) unless $res;', "\n";
-            push @l, '_pci_debug("args: ", \%args);', "\n" if $args{with_debug};
+            push @l, '_pci_debug("args after GetOptions: ", \%_pci_args);', "\n" if $args{with_debug};
+            push @l, '$res = _pci_check_args(\%_pci_args);', "\n";
+            push @l, '_pci_err($res) if $res->[0] != 200;', "\n";
+            push @l, '_pci_debug("args after _pci_check_args: ", \%_pci_args);', "\n" if $args{with_debug};
         }
         push @l, "}\n\n";
 
@@ -741,9 +811,12 @@ _
             "",
             $shebang_line, "\n",
 
+            "# PERICMD_INLINE_SCRIPT: ", dmp(\%args), "\n\n",
+
             "# This script is generated by ", __PACKAGE__,
             " version ", (${__PACKAGE__."::VERSION"} // 'dev'), " on ",
-            scalar(localtime), "\n\n",
+            scalar(localtime), ".\n",
+            "# You probably should not manually edit this file.\n\n",
 
             (map {"# BEGIN embedded $_\n$cd->{embedded_packages}{$_}# END embedded $_\n\n"} sort keys %{$cd->{embedded_packages}}),
 
@@ -754,8 +827,15 @@ _
             (map {"use $_ ();\n"} sort keys %{$cd->{modules}}),
             "\n",
 
+            "# global variables\n\n",
             (map {"my $_;\n"} sort keys %{$cd->{vars}}),
             (keys(%{$cd->{vars}}) ? "\n" : ""),
+
+            "# subroutines\n\n",
+            (map {"sub $_" . (ref($cd->{subs}{$_}) eq 'ARRAY' ?
+                "($cd->{subs}{$_}[0]) {\n$cd->{subs}{$_}[1]\n}\n\n" : " {\n$cd->{subs}{$_}\n}\n\n")}
+                sort keys %{$cd->{subs}}),
+            "\n",
 
             @l,
         );
