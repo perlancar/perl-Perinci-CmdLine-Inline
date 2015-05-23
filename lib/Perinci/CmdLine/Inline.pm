@@ -446,7 +446,19 @@ _
                 push @l2, " }\n";
             }
             push @l2, "\n";
-            push @l2, '[200,"OK"]', "\n";
+
+            push @l2, '    # check required args', "\n";
+            for my $arg (sort keys %$args_prop) {
+                my $arg_spec = $args_prop->{$arg};
+                if ($arg_spec->{req}) {
+                    push @l2, '    return [400, "Missing required argument: '.$arg.'"] unless exists $_pci_args{"'.$arg.'"};', "\n";
+                }
+                if ($arg_spec->{schema}[1]{req}) {
+                    push @l2, '    return [400, "Missing required value for argument: '.$arg.'"] if exists($_pci_args{"'.$arg.'"}) && !defined($_pci_args{"'.$arg.'"});', "\n";
+                }
+            }
+
+            push @l2, '    [200];', "\n";
             $cd->{subs}{_pci_check_args} = join('', @l2);
         }
 
