@@ -559,7 +559,8 @@ _
 
         # embed Data::Check::Structure 0.03
         $cd->{embedded_packages}{'Data::Check::Structure'} = <<'_';
-package Data::Check::Structure;
+package
+    Data::Check::Structure; # avoid PAUSE indexing
 
 our $DATE = '2014-07-14'; # DATE
 our $VERSION = '0.03'; # VERSION
@@ -724,7 +725,8 @@ _
 
         # embed Text::Table::Tiny 0.03
         $cd->{embedded_packages}{'Text::Table::Tiny'} = <<'_';
-package Text::Table::Tiny;
+package
+    Text::Table::Tiny; # avoid PAUSE indexer
 use List::Util qw();
 
 our $COLUMN_SEPARATOR = '|';
