@@ -1,5 +1,13 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.02     2015-05-25 (PERLANCAR)
+
+         - No functional changes.
+
+         - Reupload, avoid PAUSE indexer for embedded packages
+           (Text::Table::Tiny, Data::Check::Structure).
+
+
 0.01     2015-05-25 (PERLANCAR)
 
          - First release.
