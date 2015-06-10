@@ -22,6 +22,43 @@ sub _deparse {
     Data::Dumper::Dumper($_[0]);
 }
 
+# keep synchronize with Perinci::CmdLine::Base
+my %pericmd_attrs = (
+
+    # the currently unsupported/unused/irrelevant
+    (map {(
+        $_ => {
+            schema => 'any*',
+        },
+    )} qw/actions common_opts completion default_subcommand get_subcommand_from_arg
+          description exit formats
+          riap_client riap_version riap_client_args
+          subcommands
+          tags
+          read_env env_name
+          read_config config_dirs config_filename
+         /),
+
+    summary => {
+        summary => 'Program summary',
+        schema  => 'str*',
+    },
+    pass_cmdline_object => {
+        summary => 'Whether to pass Perinci::CmdLine::Inline object',
+        schema  => 'bool*',
+        default => 0,
+    },
+    program_name => {
+        summary => 'Program name',
+        schema => 'str*',
+    },
+    url => {
+        summary => 'Program URL',
+        schema => 'str*',
+        pos => 0,
+    },
+);
+
 $SPEC{gen_inline_pericmd_script} = {
     v => 1.1,
     summary => 'Generate inline Perinci::CmdLine CLI script',
@@ -35,7 +72,7 @@ the functionalities inlined so it only need core Perl modules and not any of the
 function itself requires).
 
 It's useful if you want a CLI script that is even more lightweight (in terms of
-startup overhead or dependencies) than one using `Perinci::CmdLine::Lite`.
+startup overhead or dependencies) than the one using `Perinci::CmdLine::Lite`.
 
 Currently it only supports a subset of features compared to other
 `Perinci::CmdLine::*` implementations:
@@ -56,6 +93,10 @@ Currently it only supports a subset of features compared to other
 
 * and so on.
 
+As an alternative to this module, if you are looking to reduce dependencies, you
+might also want to try using `fatten` to fatpack your
+`Perinci::CmdLine::Lite`-based script.
+
 TODO:
 
 * Option to validate argument (using periswrap).
@@ -63,31 +104,43 @@ TODO:
 * Support per_arg_json.
 
 _
+    args_rels => {
+        'dep_one&' => [
+            [meta_is_normalized => ['meta']],
+        ],
+        'req_one&' => [
+            [qw/url meta/],
+        ],
+        'choose_all&' => [
+            [qw/meta sub_name/],
+        ],
+   },
     args => {
-        url => {
-            schema => 'str*',
-            pos => 0,
-            tags => ['category:input'],
-        },
+        (map {
+            $_ => {
+                %{ $pericmd_attrs{$_} },
+                summary => $pericmd_attrs{$_}{summary} // 'Currently does nothing, provided only for compatibility with Perinci::CmdLine::Base',
+                tags => ['category:pericmd-attribute'],
+            },
+        } keys %pericmd_attrs),
+
         meta => {
+            summary => 'An alternative to specifying `url`',
             schema => 'hash',
-            tags => ['category:input'],
-        },
-        sub_name => {
-            schema => 'str*',
             tags => ['category:input'],
         },
         meta_is_normalized => {
             schema => 'bool',
             tags => ['category:input'],
         },
+        sub_name => {
+            schema => 'str*',
+            tags => ['category:input'],
+        },
 
         shebang => {
             summary => 'Set shebang line',
             schema  => 'str*',
-        },
-        program_name => {
-            schema => 'str*',
         },
         validate_args => {
             summary => 'Whether to validate arguments using schemas',
@@ -117,11 +170,6 @@ _
             schema => 'bool',
             tags => ['category:output'],
         },
-    },
-    args_rels => {
-        req_one    => ['url', 'meta'],
-        choose_all => ['meta', 'sub_name'],
-        dep_any    => ['meta_is_normalized', ['meta']],
     },
 };
 sub gen_inline_pericmd_script {
@@ -538,6 +586,8 @@ _
         push @l, "# call function\n\n";
         push @l, "{\n";
         push @l, "require $mod;\n" if $mod;
+        push @l, '$_pci_args{-cmdline} = Perinci::CmdLine::Inline::Object->new(@{', _deparse([%args]), '});', "\n"
+            if $args{pass_cmdline_object};
         push @l, 'eval { $_pci_r->{res} = ', $func_name, '(%_pci_args) };', "\n";
         push @l, 'if ($@) { $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
         push @l, "}\n\n";
@@ -557,268 +607,280 @@ _
         push @l, 'exit($status =~ /200|304/ ? 0 : ($status-300));', "\n";
         push @l, "}\n\n";
 
-        # embed Data::Check::Structure 0.03
-        $cd->{embedded_packages}{'Data::Check::Structure'} = <<'_';
-package
-    Data::Check::Structure; # avoid PAUSE indexing
-
-our $DATE = '2014-07-14'; # DATE
-our $VERSION = '0.03'; # VERSION
-
-use 5.010001;
-use strict;
-use warnings;
-
-require Exporter;
-our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(
-                       is_aoa
-                       is_aoaos
-                       is_aoh
-                       is_aohos
-                       is_aos
-                       is_hoa
-                       is_hoaos
-                       is_hoh
-                       is_hohos
-                       is_hos
-               );
-
-sub is_aos {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'ARRAY';
-    for my $i (0..@$data-1) {
-        last if defined($max) && $i >= $max;
-        return 0 if ref($data->[$i]);
-    }
-    1;
-}
-
-sub is_aoa {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'ARRAY';
-    for my $i (0..@$data-1) {
-        last if defined($max) && $i >= $max;
-        return 0 unless ref($data->[$i]) eq 'ARRAY';
-    }
-    1;
-}
-
-sub is_aoaos {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'ARRAY';
-    my $aos_opts = {max=>$max};
-    for my $i (0..@$data-1) {
-        last if defined($max) && $i >= $max;
-        return 0 unless is_aos($data->[$i], $aos_opts);
-    }
-    1;
-}
-
-sub is_aoh {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'ARRAY';
-    for my $i (0..@$data-1) {
-        last if defined($max) && $i >= $max;
-        return 0 unless ref($data->[$i]) eq 'HASH';
-    }
-    1;
-}
-
-sub is_aohos {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'ARRAY';
-    my $hos_opts = {max=>$max};
-    for my $i (0..@$data-1) {
-        last if defined($max) && $i >= $max;
-        return 0 unless is_hos($data->[$i], $hos_opts);
-    }
-    1;
-}
-
-sub is_hos {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'HASH';
-    my $i = 0;
-    for my $k (keys %$data) {
-        last if defined($max) && ++$i >= $max;
-        return 0 if ref($data->{$k});
-    }
-    1;
-}
-
-sub is_hoa {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'HASH';
-    my $i = 0;
-    for my $k (keys %$data) {
-        last if defined($max) && ++$i >= $max;
-        return 0 unless ref($data->{$k}) eq 'ARRAY';
-    }
-    1;
-}
-
-sub is_hoaos {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'HASH';
-    my $i = 0;
-    for my $k (keys %$data) {
-        last if defined($max) && ++$i >= $max;
-        return 0 unless is_aos($data->{$k});
-    }
-    1;
-}
-
-sub is_hoh {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'HASH';
-    my $i = 0;
-    for my $k (keys %$data) {
-        last if defined($max) && ++$i >= $max;
-        return 0 unless ref($data->{$k}) eq 'HASH';
-    }
-    1;
-}
-
-sub is_hohos {
-    my ($data, $opts) = @_;
-    $opts //= {};
-    my $max = $opts->{max};
-
-    return 0 unless ref($data) eq 'HASH';
-    my $i = 0;
-    for my $k (keys %$data) {
-        last if defined($max) && ++$i >= $max;
-        return 0 unless is_hos($data->{$k});
-    }
-    1;
-}
-
+        # embed Data::Check::Structure 0.03 (prefix # to avoid confusing Emacs cperl-mode indentation)
+        ($cd->{embedded_packages}{'Data::Check::Structure'} = <<'_') =~ s/^#//mg;
+#package
+#    Data::Check::Structure; # avoid PAUSE indexing
+#
+#our $DATE = '2014-07-14'; # DATE
+#our $VERSION = '0.03'; # VERSION
+#
+#use 5.010001;
+#use strict;
+#use warnings;
+#
+#require Exporter;
+#our @ISA = qw(Exporter);
+#our @EXPORT_OK = qw(
+#                       is_aoa
+#                       is_aoaos
+#                       is_aoh
+#                       is_aohos
+#                       is_aos
+#                       is_hoa
+#                       is_hoaos
+#                       is_hoh
+#                       is_hohos
+#                       is_hos
+#               );
+#
+#sub is_aos {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'ARRAY';
+#    for my $i (0..@$data-1) {
+#        last if defined($max) && $i >= $max;
+#        return 0 if ref($data->[$i]);
+#    }
+#    1;
+#}
+#
+#sub is_aoa {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'ARRAY';
+#    for my $i (0..@$data-1) {
+#        last if defined($max) && $i >= $max;
+#        return 0 unless ref($data->[$i]) eq 'ARRAY';
+#    }
+#    1;
+#}
+#
+#sub is_aoaos {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'ARRAY';
+#    my $aos_opts = {max=>$max};
+#    for my $i (0..@$data-1) {
+#        last if defined($max) && $i >= $max;
+#        return 0 unless is_aos($data->[$i], $aos_opts);
+#    }
+#    1;
+#}
+#
+#sub is_aoh {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'ARRAY';
+#    for my $i (0..@$data-1) {
+#        last if defined($max) && $i >= $max;
+#        return 0 unless ref($data->[$i]) eq 'HASH';
+#    }
+#    1;
+#}
+#
+#sub is_aohos {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'ARRAY';
+#    my $hos_opts = {max=>$max};
+#    for my $i (0..@$data-1) {
+#        last if defined($max) && $i >= $max;
+#        return 0 unless is_hos($data->[$i], $hos_opts);
+#    }
+#    1;
+#}
+#
+#sub is_hos {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'HASH';
+#    my $i = 0;
+#    for my $k (keys %$data) {
+#        last if defined($max) && ++$i >= $max;
+#        return 0 if ref($data->{$k});
+#    }
+#    1;
+#}
+#
+#sub is_hoa {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'HASH';
+#    my $i = 0;
+#    for my $k (keys %$data) {
+#        last if defined($max) && ++$i >= $max;
+#        return 0 unless ref($data->{$k}) eq 'ARRAY';
+#    }
+#    1;
+#}
+#
+#sub is_hoaos {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'HASH';
+#    my $i = 0;
+#    for my $k (keys %$data) {
+#        last if defined($max) && ++$i >= $max;
+#        return 0 unless is_aos($data->{$k});
+#    }
+#    1;
+#}
+#
+#sub is_hoh {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'HASH';
+#    my $i = 0;
+#    for my $k (keys %$data) {
+#        last if defined($max) && ++$i >= $max;
+#        return 0 unless ref($data->{$k}) eq 'HASH';
+#    }
+#    1;
+#}
+#
+#sub is_hohos {
+#    my ($data, $opts) = @_;
+#    $opts //= {};
+#    my $max = $opts->{max};
+#
+#    return 0 unless ref($data) eq 'HASH';
+#    my $i = 0;
+#    for my $k (keys %$data) {
+#        last if defined($max) && ++$i >= $max;
+#        return 0 unless is_hos($data->{$k});
+#    }
+#    1;
+#}
+#
 _
 
-        # embed Text::Table::Tiny 0.03
-        $cd->{embedded_packages}{'Text::Table::Tiny'} = <<'_';
-package
-    Text::Table::Tiny; # avoid PAUSE indexer
-use List::Util qw();
-
-our $COLUMN_SEPARATOR = '|';
-our $ROW_SEPARATOR = '-';
-our $CORNER_MARKER = '+';
-our $HEADER_ROW_SEPARATOR = '=';
-our $HEADER_CORNER_MARKER = 'O';
-
-sub table {
-
-    my %params = @_;
-    my $rows = $params{rows} or die "Must provide rows!";
-
-    # foreach col, get the biggest width
-    my $widths = _maxwidths($rows);
-    my $max_index = _max_array_index($rows);
-
-    # use that to get the field format and separators
-    my $format = _get_format($widths);
-    my $row_sep = _get_row_separator($widths);
-    my $head_row_sep = _get_header_row_separator($widths);
-
-    # here we go...
-    my @table;
-    push @table, $row_sep;
-
-    # if the first row's a header:
-    my $data_begins = 0;
-    if ( $params{header_row} ) {
-        my $header_row = $rows->[0];
-	$data_begins++;
-        push @table, sprintf(
-	    $format,
-	    map { defined($header_row->[$_]) ? $header_row->[$_] : '' } (0..$max_index)
-	);
-        push @table, $params{separate_rows} ? $head_row_sep : $row_sep;
-    }
-
-    # then the data
-    foreach my $row ( @{ $rows }[$data_begins..$#$rows] ) {
-        push @table, sprintf(
-	    $format,
-	    map { defined($row->[$_]) ? $row->[$_] : '' } (0..$max_index)
-	);
-        push @table, $row_sep if $params{separate_rows};
-    }
-
-    # this will have already done the bottom if called explicitly
-    push @table, $row_sep unless $params{separate_rows};
-    return join("\n",grep {$_} @table);
-}
-
-sub _get_cols_and_rows ($) {
-    my $rows = shift;
-    return ( List::Util::max( map { scalar @$_ } @$rows), scalar @$rows);
-}
-
-sub _maxwidths {
-    my $rows = shift;
-    # what's the longest array in this list of arrays?
-    my $max_index = _max_array_index($rows);
-    my $widths = [];
-    for my $i (0..$max_index) {
-        # go through the $i-th element of each array, find the longest
-        my $max = List::Util::max(map {defined $$_[$i] ? length($$_[$i]) : 0} @$rows);
-        push @$widths, $max;
-    }
-    return $widths;
-}
-
-# return highest top-index from all rows in case they're different lengths
-sub _max_array_index {
-    my $rows = shift;
-    return List::Util::max( map { $#$_ } @$rows );
-}
-
-sub _get_format {
-    my $widths = shift;
-    return "$COLUMN_SEPARATOR ".join(" $COLUMN_SEPARATOR ",map { "%-${_}s" } @$widths)." $COLUMN_SEPARATOR";
-}
-
-sub _get_row_separator {
-    my $widths = shift;
-    return "$CORNER_MARKER$ROW_SEPARATOR".join("$ROW_SEPARATOR$CORNER_MARKER$ROW_SEPARATOR",map { $ROW_SEPARATOR x $_ } @$widths)."$ROW_SEPARATOR$CORNER_MARKER";
-}
-
-sub _get_header_row_separator {
-    my $widths = shift;
-    return "$HEADER_CORNER_MARKER$HEADER_ROW_SEPARATOR".join("$HEADER_ROW_SEPARATOR$HEADER_CORNER_MARKER$HEADER_ROW_SEPARATOR",map { $HEADER_ROW_SEPARATOR x $_ } @$widths)."$HEADER_ROW_SEPARATOR$HEADER_CORNER_MARKER";
-}
-
+        # embed Text::Table::Tiny 0.03 (prefix # to avoid confusing Emacs cperl-mode indentation)
+        ($cd->{embedded_packages}{'Text::Table::Tiny'} = <<'_') =~ s/^#//mg;
+#package
+#    Text::Table::Tiny; # avoid PAUSE indexer
+#use List::Util qw();
+#
+#our $COLUMN_SEPARATOR = '|';
+#our $ROW_SEPARATOR = '-';
+#our $CORNER_MARKER = '+';
+#our $HEADER_ROW_SEPARATOR = '=';
+#our $HEADER_CORNER_MARKER = 'O';
+#
+#sub table {
+#
+#    my %params = @_;
+#    my $rows = $params{rows} or die "Must provide rows!";
+#
+#    # foreach col, get the biggest width
+#    my $widths = _maxwidths($rows);
+#    my $max_index = _max_array_index($rows);
+#
+#    # use that to get the field format and separators
+#    my $format = _get_format($widths);
+#    my $row_sep = _get_row_separator($widths);
+#    my $head_row_sep = _get_header_row_separator($widths);
+#
+#    # here we go...
+#    my @table;
+#    push @table, $row_sep;
+#
+#    # if the first row's a header:
+#    my $data_begins = 0;
+#    if ( $params{header_row} ) {
+#        my $header_row = $rows->[0];
+#	$data_begins++;
+#        push @table, sprintf(
+#	    $format,
+#	    map { defined($header_row->[$_]) ? $header_row->[$_] : '' } (0..$max_index)
+#	);
+#        push @table, $params{separate_rows} ? $head_row_sep : $row_sep;
+#    }
+#
+#    # then the data
+#    foreach my $row ( @{ $rows }[$data_begins..$#$rows] ) {
+#        push @table, sprintf(
+#	    $format,
+#	    map { defined($row->[$_]) ? $row->[$_] : '' } (0..$max_index)
+#	);
+#        push @table, $row_sep if $params{separate_rows};
+#    }
+#
+#    # this will have already done the bottom if called explicitly
+#    push @table, $row_sep unless $params{separate_rows};
+#    return join("\n",grep {$_} @table);
+#}
+#
+#sub _get_cols_and_rows ($) {
+#    my $rows = shift;
+#    return ( List::Util::max( map { scalar @$_ } @$rows), scalar @$rows);
+#}
+#
+#sub _maxwidths {
+#    my $rows = shift;
+#    # what's the longest array in this list of arrays?
+#    my $max_index = _max_array_index($rows);
+#    my $widths = [];
+#    for my $i (0..$max_index) {
+#        # go through the $i-th element of each array, find the longest
+#        my $max = List::Util::max(map {defined $$_[$i] ? length($$_[$i]) : 0} @$rows);
+#        push @$widths, $max;
+#    }
+#    return $widths;
+#}
+#
+## return highest top-index from all rows in case they're different lengths
+#sub _max_array_index {
+#    my $rows = shift;
+#    return List::Util::max( map { $#$_ } @$rows );
+#}
+#
+#sub _get_format {
+#    my $widths = shift;
+#    return "$COLUMN_SEPARATOR ".join(" $COLUMN_SEPARATOR ",map { "%-${_}s" } @$widths)." $COLUMN_SEPARATOR";
+#}
+#
+#sub _get_row_separator {
+#    my $widths = shift;
+#    return "$CORNER_MARKER$ROW_SEPARATOR".join("$ROW_SEPARATOR$CORNER_MARKER$ROW_SEPARATOR",map { $ROW_SEPARATOR x $_ } @$widths)."$ROW_SEPARATOR$CORNER_MARKER";
+#}
+#
+#sub _get_header_row_separator {
+#    my $widths = shift;
+#    return "$HEADER_CORNER_MARKER$HEADER_ROW_SEPARATOR".join("$HEADER_ROW_SEPARATOR$HEADER_CORNER_MARKER$HEADER_ROW_SEPARATOR",map { $HEADER_ROW_SEPARATOR x $_ } @$widths)."$HEADER_ROW_SEPARATOR$HEADER_CORNER_MARKER";
+#}
+#
 _
+
+        if ($args{pass_cmdline_object}) {
+            require Class::GenSource;
+            my $cl = 'Perinci::CmdLine::Inline::Object';
+            $cd->{embedded_packages}{$cl} =
+                Class::GenSource::gen_class_source_code(
+                    name => $cl,
+                    attributes => {
+                        map { $_ => {} } keys %pericmd_attrs,
+                    },
+                );
+        }
 
         # generate final result
         $cd->{result} = join(
