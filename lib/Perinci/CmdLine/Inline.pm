@@ -82,6 +82,10 @@ function itself requires).
 It's useful if you want a CLI script that is even more lightweight (in terms of
 startup overhead or dependencies) than the one using `Perinci::CmdLine::Lite`.
 
+So to reiterate, the goal of this module is to create a Perinci::CmdLine-based
+script which only requires core modules, and has as little startup overhead as
+possible.
+
 Currently it only supports a subset of features compared to other
 `Perinci::CmdLine::*` implementations:
 

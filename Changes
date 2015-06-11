@@ -1,5 +1,23 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.03     2015-06-11 (PERLANCAR)
+
+         - Use Test::Perinci::CmdLine test suite.
+
+         - Reduce startup overhead by using Module::FatPack and moving most
+           subroutines to fatpacked modules. 'script --help' or 'script
+           --version' now only spends 0.020-0.025s on my PC, and 0.022s of that
+           is loading/compiling Getopt::Long. So Getopt::Long is now the main
+           overhead and I'll perhaps be looking for a way to reduce this
+           further.
+
+         - Support pass_cmdline_object.
+
+         - Add the other Perinci::CmdLine::Base attributes as arguments,
+           although currently they do nothing, for compatibility with the other
+           Perinci::CmdLine backends.
+
+
 0.02     2015-05-25 (PERLANCAR)
 
          - No functional changes.
