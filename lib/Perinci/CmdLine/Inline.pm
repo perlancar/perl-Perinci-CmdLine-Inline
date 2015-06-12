@@ -649,13 +649,14 @@ _
                 );
         }
 
-        require Module::FatPack;
-        my $fp_res = Module::FatPack::fatpack_modules(
+        require Module::DataPack;
+        my $dp_res = Module::DataPack::datapack_modules(
             module_srcs => $cd->{module_srcs},
             stripper    => 1,
         );
-        return [500, "Can't fatpack: $fp_res->[0] - $fp_res->[1]"]
-            unless $fp_res->[0] == 200;
+        return [500, "Can't datapack: $dp_res->[0] - $dp_res->[1]"]
+            unless $dp_res->[0] == 200;
+        my ($dp_code1, $dp_code2) = $dp_res->[2] =~ /(.+?)^(__DATA__\n.+)/sm;
 
         # generate final result
         $cd->{result} = join(
@@ -669,13 +670,13 @@ _
             scalar(localtime), ".\n",
             "# You probably should not manually edit this file.\n\n",
 
-            $fp_res->[2],
+            $dp_code1,
 
             "package main;\n",
             "use 5.010001;\n",
             "use strict;\n",
             "use warnings;\n",
-            (map {"use $_ ();\n"} sort keys %{$cd->{modules}}),
+            (map {"require $_;\n"} sort keys %{$cd->{modules}}),
             "\n",
 
             "# global variables\n\n",
@@ -689,6 +690,8 @@ _
             "\n",
 
             @l,
+
+            $dp_code2,
         );
     }
 
