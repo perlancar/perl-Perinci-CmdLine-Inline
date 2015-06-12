@@ -1,5 +1,10 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.04    2015-06-12 (PERLANCAR)
+
+	- Replace Module::FatPack with Module::DataPack.
+
+
 0.03     2015-06-11 (PERLANCAR)
 
          - Use Test::Perinci::CmdLine test suite.
