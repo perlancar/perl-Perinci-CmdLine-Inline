@@ -247,6 +247,7 @@ sub gen_inline_pericmd_script {
             map {$_ => _get_module($_)} qw(
                                               Data::Check::Structure
                                               Text::Table::Tiny
+                                              Getopt::Long::Less
                                       )
         },
     };
@@ -549,9 +550,8 @@ _
         $cd->{vars}{'%_pci_args'}++;
         push @l, "# parse cmdline options\n\n";
         push @l, "{\n";
-        push @l, "require Getopt::Long;\n";
+        push @l, "require Getopt::Long::Less;\n";
         push @l, 'my %mentioned_args;', "\n";
-        push @l, qq[Getopt::Long::Configure("bundling", "no_ignore_case");\n];
         {
             push @l, 'my $go_spec = {', "\n";
             for my $go_spec (sort keys %{ $ggl_res->[2] }) {
@@ -611,7 +611,7 @@ _
                 push @l, "    },\n";
             }
             push @l, "};\n";
-            push @l, 'my $res = Getopt::Long::GetOptions(%$go_spec);', "\n";
+            push @l, 'my $res = Getopt::Long::Less::GetOptions(%$go_spec);', "\n";
             push @l, '_pci_err([500, "GetOptions failed"]) unless $res;', "\n";
             push @l, '_pci_debug("args after GetOptions: ", \%_pci_args);', "\n" if $args{with_debug};
             push @l, '$res = _pci_check_args(\%_pci_args);', "\n";
