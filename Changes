@@ -1,5 +1,12 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.06    2015-06-16 (PERLANCAR)
+
+	- No functional changes.
+
+	- Add & show startup overhead benchmark vs Perinci::CmdLine::Lite.
+
+
 0.05    2015-06-16 (PERLANCAR)
 
         - Tweak generated --version message (prints Perinci::CmdLine::Inline
