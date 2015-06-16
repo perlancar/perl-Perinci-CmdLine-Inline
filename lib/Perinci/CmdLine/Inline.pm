@@ -17,6 +17,7 @@ our %SPEC;
 
 sub _deparse {
     require Data::Dumper;
+    no warnings 'once';
     local $Data::Dumper::Deparse = 1;
     local $Data::Dumper::Terse   = 1;
     local $Data::Dumper::Indent  = 0;
@@ -259,6 +260,7 @@ sub gen_inline_pericmd_script {
         my %copts;
         {
             require Perinci::CmdLine::Base;
+            no warnings 'once';
             for (qw/help version json format naked_res/) {
                 $copts{$_} = $Perinci::CmdLine::Base::copts{$_};
             }
@@ -312,7 +314,7 @@ _
             require Data::Clean::JSON;
             my $cleanser = Data::Clean::JSON->get_cleanser;
             my $src = $cleanser->{src};
-            $cd->{module_srcs}{'Inlined::_pci_clean_json'} = "require Scalar::Util; sub _pci_clean_json { $src }\n1;\n";
+            $cd->{module_srcs}{'Inlined::_pci_clean_json'} = "require Scalar::Util; use feature 'state'; sub _pci_clean_json { $src }\n1;\n";
         }
 
         # borrowed from Perinci::CmdLine::Lite 1.13, use our own firstidx
@@ -567,10 +569,16 @@ _
                             unless $res->[0] == 200;
                         push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
                     } elsif ($specmeta->{common_opt} eq 'version') {
+                        no strict 'refs';
                         push @l, '        print "', $program_name , ' version ',
-                            ($mod && ${"$mod\::VERSION"} ? ${"$mod\::DATE"} : '?'),
+                            ($mod && ${"$mod\::VERSION"} ? ${"$mod\::VERSION"} : '?'),
                             ($mod && ${"$mod\::DATE"} ? " (".${"$mod\::DATE"}.")" : '?'),
-                            '\n"; exit 0;', "\n";
+                            '\n";', "\n";
+                        push @l, '        print "  ', __PACKAGE__ , ' version ',
+                            (${__PACKAGE__."::VERSION"} // 'dev'),
+                            (${__PACKAGE__."::DATE"} ? " (".${__PACKAGE__."::DATE"}.")" : ""),
+                            '\n";', "\n";
+                        push @l, '        exit 0;', "\n";
                     } elsif ($specmeta->{common_opt} eq 'format') {
                         push @l, '        $_pci_r->{format} = $_[1];', "\n";
                     } elsif ($specmeta->{common_opt} eq 'json') {
