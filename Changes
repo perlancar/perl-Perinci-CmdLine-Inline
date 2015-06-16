@@ -1,5 +1,13 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.05    2015-06-16 (PERLANCAR)
+
+        - Tweak generated --version message (prints Perinci::CmdLine::Inline
+          version too, fix typo).
+
+        - Some other fixes to avoid perl warnings/errors.
+
+
 0.04    2015-06-12 (PERLANCAR)
 
 	- Replace Module::FatPack with Module::DataPack.
