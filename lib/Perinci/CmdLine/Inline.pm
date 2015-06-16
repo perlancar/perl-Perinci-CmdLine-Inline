@@ -762,6 +762,10 @@ _
 
 B<EARLY DEVELOPMENT.>
 
+Sample startup overhead benchmark vs Perinci::CmdLine::Lite:
+
+# COMMAND: perl devscripts/bench-startup
+
 
 =head1 SEE ALSO
 
