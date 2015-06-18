@@ -1,5 +1,14 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.09    2015-06-18 (PERLANCAR)
+
+	- [dzil] Fix misplaced prereqs, all the modules required to embed
+	  into generated CLI script are our RuntimeRequires, not
+	  DevelopRequires.
+
+	- Add option: include to include extra modules.
+
+
 0.08    2015-06-16 (PERLANCAR)
 
 	- Replace Getopt::Long with Getopt::Long::Less (embedded) for
