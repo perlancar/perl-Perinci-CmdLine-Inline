@@ -65,6 +65,7 @@ my %pericmd_attrs = (
         summary => 'Program URL',
         schema => 'str*',
         pos => 0,
+        'x.schema.entity' => 'riap_url',
     },
 );
 
