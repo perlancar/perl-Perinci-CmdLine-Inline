@@ -171,6 +171,12 @@ _
             schema => 'bool',
             tags => ['category:debugging'],
         },
+        include => {
+            summary => 'Include extra modules',
+            'summary.alt.plurality.singular' => 'Include an extra module',
+            schema => ['array*', of=>'str*'],
+            'x.schema.element_entity' => 'modulename',
+        },
 
         output_file => {
             summary => 'Set output file, defaults to stdout',
@@ -244,11 +250,12 @@ sub gen_inline_pericmd_script {
         vars => {},
         subs => {},
         module_srcs => {
-            map {$_ => _get_module($_)} qw(
-                                              Data::Check::Structure
-                                              Text::Table::Tiny
-                                              Getopt::Long::Less
-                                      )
+            map {$_ => _get_module($_)} (
+                "Data::Check::Structure",
+                "Text::Table::Tiny",
+                "Getopt::Long::Less",
+                @{ $args{include} // [] },
+            )
         },
     };
 
