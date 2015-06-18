@@ -38,6 +38,7 @@ my %pericmd_attrs = (
     (map {(
         $_ => {
             schema => 'any*',
+            tags => ['category:compatibility'],
         },
     )} qw/actions common_opts completion default_subcommand get_subcommand_from_arg
           description exit formats
