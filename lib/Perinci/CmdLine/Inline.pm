@@ -254,7 +254,7 @@ sub gen_inline_pericmd_script {
             map {$_ => _get_module($_)} (
                 "Data::Check::Structure",
                 "Text::Table::Tiny",
-                "Getopt::Long::Less",
+                "Getopt::Long::EvenLess",
                 @{ $args{include} // [] },
             )
         },
@@ -270,9 +270,20 @@ sub gen_inline_pericmd_script {
         {
             require Perinci::CmdLine::Base;
             no warnings 'once';
-            for (qw/help version json format naked_res/) {
+            for (qw/help version json format/) {
                 $copts{$_} = $Perinci::CmdLine::Base::copts{$_};
             }
+            # "naked_res!" currently not supported by Getopt::Long::EvenLess, so
+            # we split it. the downside is that we don't hide the default, by
+            # default.
+            $copts{naked_res} = {
+                getopt  => "naked-res",
+                summary => "When outputing as JSON, strip result envelope",
+            };
+            $copts{no_naked_res} = {
+                getopt  => "no-naked-res|nonaked-res",
+                summary => "When outputing as JSON, don't strip result envelope",
+            };
         }
 
         my $shebang_line;
@@ -559,7 +570,7 @@ _
         $cd->{vars}{'%_pci_args'}++;
         push @l, "# parse cmdline options\n\n";
         push @l, "{\n";
-        push @l, "require Getopt::Long::Less;\n";
+        push @l, "require Getopt::Long::EvenLess;\n";
         push @l, 'my %mentioned_args;', "\n";
         {
             push @l, 'my $go_spec = {', "\n";
@@ -593,7 +604,9 @@ _
                     } elsif ($specmeta->{common_opt} eq 'json') {
                         push @l, '        $_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json";', "\n";
                     } elsif ($specmeta->{common_opt} eq 'naked_res') {
-                        push @l, '        $_pci_r->{naked_res} = $_[1];', "\n";
+                        push @l, '        $_pci_r->{naked_res} = 1;', "\n";
+                    } elsif ($specmeta->{common_opt} eq 'no_naked_res') {
+                        push @l, '        $_pci_r->{naked_res} = 0;', "\n";
                     } else {
                         die "BUG: Unrecognized common_opt '$specmeta->{common_opt}'";
                     }
@@ -620,7 +633,7 @@ _
                 push @l, "    },\n";
             }
             push @l, "};\n";
-            push @l, 'my $res = Getopt::Long::Less::GetOptions(%$go_spec);', "\n";
+            push @l, 'my $res = Getopt::Long::EvenLess::GetOptions(%$go_spec);', "\n";
             push @l, '_pci_err([500, "GetOptions failed"]) unless $res;', "\n";
             push @l, '_pci_debug("args after GetOptions: ", \%_pci_args);', "\n" if $args{with_debug};
             push @l, '$res = _pci_check_args(\%_pci_args);', "\n";
