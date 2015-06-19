@@ -1,5 +1,11 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.10    2015-06-19 (PERLANCAR)
+
+        - Switch from using Getopt::Long::Less to Getopt::Long::EvenLess
+          because... well, just because :-)
+
+
 0.09    2015-06-18 (PERLANCAR)
 
 	- [dzil] Fix misplaced prereqs, all the modules required to embed
