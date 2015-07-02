@@ -42,6 +42,7 @@ my %pericmd_attrs = (
     )} qw/actions common_opts completion default_subcommand get_subcommand_from_arg
           description exit formats
           riap_client riap_version riap_client_args
+          log
           subcommands
           tags
           read_env env_name
