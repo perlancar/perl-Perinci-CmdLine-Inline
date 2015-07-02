@@ -190,6 +190,11 @@ _
             'x.schema.element_entity' => 'modulename',
         },
 
+        code_before_parse_cmdline_options => {
+            schema => 'str*',
+            tags => ['category:extra-code'],
+        },
+
         output_file => {
             summary => 'Set output file, defaults to stdout',
             schema => 'str*',
@@ -729,6 +734,8 @@ _
                 "($cd->{subs}{$_}[0]) {\n$cd->{subs}{$_}[1]\n}\n\n" : " {\n$cd->{subs}{$_}\n}\n\n")}
                 sort keys %{$cd->{subs}}),
             "\n",
+
+            ("# code before parse cmdline options \n\n", $args{code_before_parse_cmdline_options}) x !!$args{code_before_parse_cmdline_options},
 
             @l,
 
