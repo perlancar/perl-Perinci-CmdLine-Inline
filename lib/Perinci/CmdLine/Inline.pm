@@ -718,7 +718,7 @@ _
             "",
             $shebang_line, "\n",
 
-            ("# code_after_shebang\n\n", $args{code_after_shebang}, "\n") x !!$args{code_after_shebang},
+            ($args{code_after_shebang}, "\n") x !!$args{code_after_shebang},
 
             "# PERICMD_INLINE_SCRIPT: ", dmp(\%args), "\n\n",
 
@@ -751,7 +751,7 @@ _
                 sort keys %{$cd->{subs}}),
             "\n",
 
-            ("# code_before_parse_cmdline_options\n\n", $args{code_before_parse_cmdline_options}, "\n") x !!$args{code_before_parse_cmdline_options},
+            ($args{code_before_parse_cmdline_options}, "\n") x !!$args{code_before_parse_cmdline_options},
 
             @l,
 
