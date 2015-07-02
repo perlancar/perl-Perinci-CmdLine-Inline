@@ -638,7 +638,7 @@ _
                             push @l, '$_pci_args{', $specmeta->{arg}, '} = $_[1];';
                         }
                     } else {
-                        if ($specmeta->{parsed}{type} =~ /\@/) {
+                        if (($specmeta->{parsed}{type} // '') =~ /\@/) {
                             push @l, 'if ($mentioned_args{', $specmeta->{arg}, '}++) { push @{ $_pci_args{', $specmeta->{arg}, '} }, $_[1] } else { $_pci_args{', $specmeta->{arg}, '} = [$_[1]] }';
                         } else {
                             push @l, '$_pci_args{', $specmeta->{arg}, '} = $_[1];';
