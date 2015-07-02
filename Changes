@@ -1,5 +1,14 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.13    2015-07-02 (PERLANCAR)
+
+	- [fmt] Some formatting tweaks in the generated script (avoid
+          unnecessary marker, avoid dumping long argument values in the
+          #PERICMD_INLINE_SCRIPT comment).
+
+        - Add #PODNAME in generated script for dzil.
+
+
 0.12    2015-07-02 (PERLANCAR)
 
 	- Add option: code_after_shebang.
