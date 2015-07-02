@@ -716,8 +716,10 @@ _
             scalar(localtime), ".\n",
             "# You probably should not manually edit this file.\n\n",
 
+            # for dzil
             "# DATE\n",
             "# VERSION\n",
+            "\n",
 
             $dp_code1,
 
