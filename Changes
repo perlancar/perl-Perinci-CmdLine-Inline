@@ -1,5 +1,23 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.11    2015-07-02 (PERLANCAR)
+
+        - Add options: extra_urls_for_version & log (currently ignored).
+
+        - Add option: code_before_parse_cmdline_options.
+
+        - Add #DATE & #VERSION in the generated script for when the script is
+          generated during Dist::Zilla build (see
+          Dist::Zilla::Plugin::GenPericmdScript & App:GenPericmdScript).
+
+        - Add option: program_version (for when the script is generated during
+          Dist::Zilla build and the script backend module being loaded is the
+          unbuilt version which might not have $VERSION yet). Used by
+          DZP:GenPericmdScript.
+
+        - Some fixes.
+
+
 0.10    2015-06-19 (PERLANCAR)
 
         - Switch from using Getopt::Long::Less to Getopt::Long::EvenLess
