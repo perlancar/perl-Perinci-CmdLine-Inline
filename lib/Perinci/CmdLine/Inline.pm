@@ -737,6 +737,7 @@ _
             # for dzil
             "# DATE\n",
             "# VERSION\n",
+            "# PODNAME: ", ($args{program_name} // ''), "\n",
             "\n",
 
             $dp_code1,
