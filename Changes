@@ -1,5 +1,10 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.12    2015-07-02 (PERLANCAR)
+
+	- Add option: code_after_shebang.
+
+
 0.11    2015-07-02 (PERLANCAR)
 
         - Add options: extra_urls_for_version & log (currently ignored).
