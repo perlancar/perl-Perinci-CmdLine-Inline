@@ -67,6 +67,16 @@ my %pericmd_attrs = (
         pos => 0,
         'x.schema.entity' => 'riap_url',
     },
+    extra_urls_for_version => {
+        summary => 'More URLs to show version for --version',
+        description => <<'_',
+
+Currently not implemented in Perinci::CmdLine::Inline.
+
+_
+        schema => ['array*', of=>'str*'],
+        'x.schema.element_entity' => 'riap_url',
+    },
 );
 
 $SPEC{gen_inline_pericmd_script} = {
