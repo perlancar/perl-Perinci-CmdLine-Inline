@@ -716,6 +716,9 @@ _
             scalar(localtime), ".\n",
             "# You probably should not manually edit this file.\n\n",
 
+            "# DATE\n",
+            "# VERSION\n",
+
             $dp_code1,
 
             "package main;\n",
