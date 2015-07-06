@@ -1,5 +1,12 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.14    2015-07-06 (PERLANCAR)
+
+	- Interpret function metadata attribute cmdline.skip_format: on
+	  true, skip adding common options --format, --json, --naked-res as
+	  well.
+
+
 0.13    2015-07-02 (PERLANCAR)
 
 	- [fmt] Some formatting tweaks in the generated script (avoid
