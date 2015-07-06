@@ -292,22 +292,27 @@ sub gen_inline_pericmd_script {
 
         my %copts;
         {
+            my $skip_format = $meta->{'cmdline.skip_format'};
+
             require Perinci::CmdLine::Base;
             no warnings 'once';
-            for (qw/help version json format/) {
-                $copts{$_} = $Perinci::CmdLine::Base::copts{$_};
+            $copts{help} = $Perinci::CmdLine::Base::copts{help};
+            $copts{version} = $Perinci::CmdLine::Base::copts{version};
+            unless ($skip_format) {
+                $copts{json} = $Perinci::CmdLine::Base::copts{json};
+                $copts{format} = $Perinci::CmdLine::Base::copts{format};
+                # "naked_res!" currently not supported by
+                # Getopt::Long::EvenLess, so we split it. the downside is that
+                # we don't hide the default, by default.
+                $copts{naked_res} = {
+                    getopt  => "naked-res",
+                    summary => "When outputing as JSON, strip result envelope",
+                };
+                $copts{no_naked_res} = {
+                    getopt  => "no-naked-res|nonaked-res",
+                    summary => "When outputing as JSON, don't strip result envelope",
+                };
             }
-            # "naked_res!" currently not supported by Getopt::Long::EvenLess, so
-            # we split it. the downside is that we don't hide the default, by
-            # default.
-            $copts{naked_res} = {
-                getopt  => "naked-res",
-                summary => "When outputing as JSON, strip result envelope",
-            };
-            $copts{no_naked_res} = {
-                getopt  => "no-naked-res|nonaked-res",
-                summary => "When outputing as JSON, don't strip result envelope",
-            };
         }
 
         my $shebang_line;
@@ -681,7 +686,7 @@ _
         push @l, "# display result\n\n";
         push @l, "{\n";
         push @l, 'my $fres;', "\n";
-        push @l, 'if ($_pci_r->{res}[3]{"cmdline.skip_format"}) { $fres = $_pci_r->{res}[2] } else { require Inlined::_pci_format_result; $fres = _pci_format_result($_pci_r) }', "\n";
+        push @l, 'if (', ($meta->{'cmdline.skip_format'} ? 1:0), ' || $_pci_r->{res}[3]{"cmdline.skip_format"}) { $fres = $_pci_r->{res}[2] } else { require Inlined::_pci_format_result; $fres = _pci_format_result($_pci_r) }', "\n";
         push @l, 'print $fres;', "\n";
         push @l, "}\n\n";
 
