@@ -1,5 +1,11 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.15    2015-07-08 (PERLANCAR)
+
+	- Add option: skip_format, like in
+	  Perinci::CmdLine::{Lite,Classic}.
+
+
 0.14    2015-07-06 (PERLANCAR)
 
 	- Interpret function metadata attribute cmdline.skip_format: on
