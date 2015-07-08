@@ -82,6 +82,12 @@ _
         schema => ['array*', of=>'str*'],
         'x.schema.element_entity' => 'riap_url',
     },
+    skip_format => {
+        summary => 'Assume that function returns raw text that need '.
+            'no formatting, do not offer --format, --json, --naked-res',
+        schema  => 'bool*',
+        default => 0,
+    },
 );
 
 $SPEC{gen_inline_pericmd_script} = {
@@ -288,12 +294,13 @@ sub gen_inline_pericmd_script {
     {
         no strict 'refs';
 
+        my $skip_format = $args{skip_format} ||
+            $meta->{'cmdline.skip_format'};
+
         my @l;
 
         my %copts;
         {
-            my $skip_format = $meta->{'cmdline.skip_format'};
-
             require Perinci::CmdLine::Base;
             no warnings 'once';
             $copts{help} = $Perinci::CmdLine::Base::copts{help};
@@ -686,7 +693,7 @@ _
         push @l, "# display result\n\n";
         push @l, "{\n";
         push @l, 'my $fres;', "\n";
-        push @l, 'if (', ($meta->{'cmdline.skip_format'} ? 1:0), ' || $_pci_r->{res}[3]{"cmdline.skip_format"}) { $fres = $_pci_r->{res}[2] } else { require Inlined::_pci_format_result; $fres = _pci_format_result($_pci_r) }', "\n";
+        push @l, 'if (', ($skip_format ? 1:0), ' || $_pci_r->{res}[3]{"cmdline.skip_format"}) { $fres = $_pci_r->{res}[2] } else { require Inlined::_pci_format_result; $fres = _pci_format_result($_pci_r) }', "\n";
         push @l, 'print $fres;', "\n";
         push @l, "}\n\n";
 
