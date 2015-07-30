@@ -750,6 +750,14 @@ _
             "# DATE\n",
             "# VERSION\n",
             "# PODNAME: ", ($args{program_name} // ''), "\n",
+            do {
+                my $abstract = $args{summary} // $meta->{summary};
+                if ($abstract) {
+                    ("# ABSTRACT: ", $abstract, "\n");
+                } else {
+                    ();
+                }
+            },
             "\n",
 
             $dp_code1,
