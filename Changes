@@ -1,5 +1,11 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.17    2015-07-30 (PERLANCAR)
+
+	- Dump arguments after #PERICMD_INLINE_SCRIPT directive with JSON
+	  instead of Data::Dmp so it's safer to parse.
+
+
 0.16    2015-07-30 (PERLANCAR)
 
 	- Generate #ABSTRACT.
