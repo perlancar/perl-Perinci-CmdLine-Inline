@@ -1,5 +1,10 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.16    2015-07-30 (PERLANCAR)
+
+	- Generate #ABSTRACT.
+
+
 0.15    2015-07-08 (PERLANCAR)
 
 	- Add option: skip_format, like in
