@@ -1,5 +1,12 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.18    2015-07-31 (PERLANCAR)
+
+	- No functional changes.
+
+	- Force minimum version of Test::Perinci::CmdLine [CT].
+
+
 0.17    2015-07-30 (PERLANCAR)
 
 	- Dump arguments after #PERICMD_INLINE_SCRIPT directive with JSON
