@@ -1,5 +1,12 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.19    2015-08-01 (PERLANCAR)
+
+	- No functional changes.
+
+	- Bump prereq version Module::DataPack 0.09.
+
+
 0.18    2015-07-31 (PERLANCAR)
 
 	- No functional changes.
