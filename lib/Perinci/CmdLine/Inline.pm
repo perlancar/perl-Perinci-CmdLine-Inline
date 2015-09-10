@@ -208,6 +208,10 @@ _
             schema => 'str*',
             tags => ['category:extra-code'],
         },
+        code_after_end => {
+            schema => 'str*',
+            tags => ['category:extra-code'],
+        },
 
         output_file => {
             summary => 'Set output file, defaults to stdout',
@@ -730,7 +734,7 @@ _
             "",
             $shebang_line, "\n",
 
-            ($args{code_after_shebang}, "\n") x !!$args{code_after_shebang},
+            ("# code_after_shebang\n", $args{code_after_shebang}, "\n") x !!$args{code_after_shebang},
 
             "# PERICMD_INLINE_SCRIPT: ", do {
                 require JSON;
@@ -780,11 +784,13 @@ _
                 sort keys %{$cd->{subs}}),
             "\n",
 
-            ($args{code_before_parse_cmdline_options}, "\n") x !!$args{code_before_parse_cmdline_options},
+            ("# code_before_parse_cmdline_options\n", $args{code_before_parse_cmdline_options}, "\n") x !!$args{code_before_parse_cmdline_options},
 
             @l,
 
             $dp_code2,
+
+            ("# code_after_end\n", $args{code_after_end}, "\n") x !!$args{code_after_end},
         );
     }
 
