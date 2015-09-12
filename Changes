@@ -1,5 +1,12 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.21    2015-09-12 (PERLANCAR)
+
+	- [Incompatible change] Rename program_* arguments to script_* to
+	  be more consistent with App::GenPericmdScript, rename 'summary'
+	  argument to 'script_summary'.
+
+
 0.20    2015-09-10 (PERLANCAR)
 
 	- Add option: code_after_end.
