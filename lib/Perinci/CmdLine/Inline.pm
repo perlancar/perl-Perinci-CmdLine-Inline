@@ -49,21 +49,19 @@ my %pericmd_attrs = (
           read_config config_dirs config_filename
          /),
 
-    summary => {
-        summary => 'Program summary',
-        schema  => 'str*',
-    },
     pass_cmdline_object => {
         summary => 'Whether to pass Perinci::CmdLine::Inline object',
         schema  => 'bool*',
         default => 0,
     },
-    program_name => {
-        summary => 'Program name',
+    script_name => {
         schema => 'str*',
     },
-    program_version => {
-        summary => 'Program version (otherwise will use version from url metadata)',
+    script_summary => {
+        schema => 'str*',
+    },
+    script_version => {
+        summary => 'Script version (otherwise will use version from url metadata)',
         schema => 'str',
     },
     url => {
@@ -231,7 +229,7 @@ sub gen_inline_pericmd_script {
 
     my $validate_args = $args{validate_args} // 1;
     #my $validate_result = $args{validate_result} // 1;
-    my $program_name = $args{program_name};
+    my $script_name = $args{script_name};
 
     my $meta;
     my $mod;
@@ -253,7 +251,7 @@ sub gen_inline_pericmd_script {
                 or return [412, "Can't find meta for URL '$url'"];
             defined &{"$mod\::$short_func_name"}
                 or return [412, "Can't find function for URL '$url'"];
-            $program_name //= do {
+            $script_name //= do {
                 local $_ = $short_func_name;
                 s/_/-/g;
                 $_;
@@ -262,14 +260,14 @@ sub gen_inline_pericmd_script {
         } else {
             $meta = $args{meta};
             $func_name = $args{sub_name};
-            $program_name //= do {
+            $script_name //= do {
                 local $_ = $args{sub_name};
                 s/_/-/g;
                 $_;
             };
         }
 
-        $program_name //= do {
+        $script_name //= do {
             local $_ = $0;
             s!.+[/\\]!!;
             $_;
@@ -623,15 +621,15 @@ _
                         my $res = Perinci::CmdLine::Help::gen_help(
                             meta => $meta,
                             common_opts => \%copts,
-                            program_name => $program_name,
+                            program_name => $script_name,
                         );
                         return [500, "Can't generate help: $res->[0] - $res->[1]"]
                             unless $res->[0] == 200;
                         push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
                     } elsif ($specmeta->{common_opt} eq 'version') {
                         no strict 'refs';
-                        push @l, '        print "', $program_name , ' version ',
-                            (defined($args{program_version}) ? $args{program_version} :
+                        push @l, '        print "', $script_name , ' version ',
+                            (defined($args{script_version}) ? $args{script_version} :
                              $mod && ${"$mod\::VERSION"} ? ${"$mod\::VERSION"} : '?'),
                             ($mod && ${"$mod\::DATE"} ? " (".${"$mod\::DATE"}.")" : ''),
                             '\n";', "\n";
@@ -754,9 +752,9 @@ _
             # for dzil
             "# DATE\n",
             "# VERSION\n",
-            "# PODNAME: ", ($args{program_name} // ''), "\n",
+            "# PODNAME: ", ($args{script_name} // ''), "\n",
             do {
-                my $abstract = $args{summary} // $meta->{summary};
+                my $abstract = $args{script_summary} // $meta->{summary};
                 if ($abstract) {
                     ("# ABSTRACT: ", $abstract, "\n");
                 } else {
