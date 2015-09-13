@@ -9,5 +9,8 @@ use warnings;
 use Test::More 0.98;
 use Test::Perinci::CmdLine qw(pericmd_ok);
 
-pericmd_ok(class => 'Perinci::CmdLine::Inline');
+pericmd_ok(
+    class => 'Perinci::CmdLine::Inline',
+    exclude_tags => ['subcommand'],
+);
 done_testing;

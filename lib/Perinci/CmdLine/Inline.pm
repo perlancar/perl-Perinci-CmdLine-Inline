@@ -678,6 +678,7 @@ _
             push @l, '$res = _pci_check_args(\%_pci_args);', "\n";
             push @l, '_pci_err($res) if $res->[0] != 200;', "\n";
             push @l, '_pci_debug("args after _pci_check_args: ", \%_pci_args);', "\n" if $args{with_debug};
+            push @l, '_pci_err([500, "Extranous command-line argument(s): ".join(", ", @ARGV)]) if @ARGV;', "\n";
         }
         push @l, "}\n\n";
 
