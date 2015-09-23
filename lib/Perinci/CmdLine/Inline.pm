@@ -196,6 +196,7 @@ _
             'summary.alt.plurality.singular' => 'Include an extra module',
             schema => ['array*', of=>'str*'],
             'x.schema.element_entity' => 'modulename',
+            cmdline_aliases => {I=>{}},
         },
 
         code_after_shebang => {
