@@ -11,6 +11,10 @@ use Test::Perinci::CmdLine qw(pericmd_ok);
 
 pericmd_ok(
     class => 'Perinci::CmdLine::Inline',
-    exclude_tags => ['subcommand'],
+    exclude_tags => [
+        'embedded-meta', # probably won't ever be supported
+        'subcommand', # currently unsupported
+        'completion', # currently unsupported
+    ],
 );
 done_testing;
