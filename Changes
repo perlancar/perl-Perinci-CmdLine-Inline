@@ -1,5 +1,18 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.25    2015-09-29 (PERLANCAR)
+
+        - Observe result metadata attributes: cmdline.default_format,
+          cmdline.result, cmdline.exit_code.
+
+        - Support per_arg_json.
+
+        - Refactor (use Perinci::Result::Format::Lite instead of doing our own
+          thing, this reduces code duplication).
+
+        - Adjust to Test::Perinci::CmdLine 1.26.
+
+
 0.24    2015-09-28 (PERLANCAR)
 
 	- No functional changes.

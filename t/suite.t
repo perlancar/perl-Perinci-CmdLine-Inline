@@ -12,14 +12,20 @@ use Test::Perinci::CmdLine qw(pericmd_ok);
 pericmd_ok(
     class => 'Perinci::CmdLine::Inline',
     exclude_tags => [
-        'embedded-meta', # probably won't ever be supported
+         # probably won't ever be supported
+        'embedded-meta',
 
-        'completion', # probably won't be unsupported
+        # probably won't be unsupported
+        'completion',
+        'tx',
 
-        'subcommand', # currently unsupported
-        'cmdline_src', # currently unsupported
-        'env', # currently unsupported
-        'config-file', # currently unsupported
+        # currently unsupported
+        'dry-run',
+        'subcommand',
+        'cmdline_src',
+        'env',
+        'config-file',
+        'streaming',
     ],
 );
 done_testing;
