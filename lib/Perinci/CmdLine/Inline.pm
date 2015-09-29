@@ -436,7 +436,7 @@ _
         }
 
         $cd->{vars}{'$_pci_r'}++;
-        push @l, '$_pci_r = { format=>"text", naked_res=>0, };', "\n\n";
+        push @l, '$_pci_r = { naked_res=>0, };', "\n\n";
 
         # gen code to parse cmdline options
         $cd->{vars}{'%_pci_args'}++;
@@ -532,15 +532,18 @@ _
         push @l, "# display result\n\n";
         push @l, "{\n";
         push @l, 'my $fres;', "\n";
-        push @l, 'if (', ($skip_format ? 1:0), ' || $_pci_r->{res}[3]{"cmdline.skip_format"}) { $fres = $_pci_r->{res}[2] } else { require Perinci::Result::Format::Lite; $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, $_pci_r->{format}, $_pci_r->{naked_res}, 0) }', "\n";
+        push @l, 'my $save_res; if (exists $_pci_r->{res}[3]{"cmdline.result"}) { $save_res = $_pci_r->{res}[2]; $_pci_r->{res}[2] = $_pci_r->{res}[3]{"cmdline.result"} }', "\n";
+        push @l, 'if (', ($skip_format ? 1:0), ' || $_pci_r->{res}[3]{"cmdline.skip_format"}) { $fres = $_pci_r->{res}[2] } else { require Perinci::Result::Format::Lite; $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
         push @l, 'print $fres;', "\n";
+        push @l, 'if (defined $save_res) { $_pci_r->{res}[2] = $save_res }', "\n";
         push @l, "}\n\n";
 
         # generate code to exit with code
         push @l, "# exit\n\n";
         push @l, "{\n";
         push @l, 'my $status = $_pci_r->{res}[0];', "\n";
-        push @l, 'exit($status =~ /200|304/ ? 0 : ($status-300));', "\n";
+        push @l, 'my $exit_code = $_pci_r->{res}[3]{"cmdline.exit_code"} // ($status =~ /200|304/ ? 0 : ($status-300));', "\n";
+        push @l, 'exit($exit_code);', "\n";
         push @l, "}\n\n";
 
         if ($args{pass_cmdline_object}) {

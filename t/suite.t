@@ -13,8 +13,13 @@ pericmd_ok(
     class => 'Perinci::CmdLine::Inline',
     exclude_tags => [
         'embedded-meta', # probably won't ever be supported
+
+        'completion', # probably won't be unsupported
+
         'subcommand', # currently unsupported
-        'completion', # currently unsupported
+        'cmdline_src', # currently unsupported
+        'env', # currently unsupported
+        'config-file', # currently unsupported
     ],
 );
 done_testing;
