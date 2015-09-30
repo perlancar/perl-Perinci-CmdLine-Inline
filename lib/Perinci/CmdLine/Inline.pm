@@ -313,7 +313,7 @@ sub gen_inline_pericmd_script {
             $copts{help} = $Perinci::CmdLine::Base::copts{help};
             $copts{version} = $Perinci::CmdLine::Base::copts{version};
             unless ($skip_format) {
-                _add_module($cd, "JSON::Tiny");
+                _add_module($cd, "JSON::Tiny::Subclassable");
                 $copts{json} = $Perinci::CmdLine::Base::copts{json};
                 $copts{format} = $Perinci::CmdLine::Base::copts{format};
                 # "naked_res!" currently not supported by
@@ -355,23 +355,13 @@ _
     print "\n";
 _
 
-        # not yet needed
-        #        $cd->{subs}{_pci_encode_json} = <<'_';
-        #    state $code = do {
-        #        if    (eval { require JSON::XS; 1 }) { my $json = JSON::XS->new->canonical(1)->allow_nonref; sub { $json->encode(shift) } }
-        #        elsif (eval { require JSON::PP; 1 }) { my $json = JSON::PP->new->canonical(1)->allow_nonref; sub { $json->encode(shift) } }
-        #        else { require JSON::Tiny; \&JSON::Tiny::encode_json }
-        #    };
-        #    $code->(shift);
-        #_
-
-        $cd->{subs}{_pci_decode_json} = <<'_';
-    state $code = do {
-        if    (eval { require JSON::XS; 1 }) { my $json = JSON::XS->new->canonical(1)->allow_nonref; sub { $json->decode(shift) } }
-        elsif (eval { require JSON::PP; 1 }) { my $json = JSON::PP->new->canonical(1)->allow_nonref; sub { $json->decode(shift) } }
-        else { require JSON::Tiny; \&JSON::Tiny::decode_json }
+        $cd->{subs}{_pci_json} = <<'_';
+    state $json = do {
+        if    (eval { require JSON::XS; 1 }) { JSON::XS->new->canonical(1)->allow_nonref }
+        elsif (eval { require JSON::PP; 1 }) { JSON::PP->new->canonical(1)->allow_nonref }
+        else { require JSON::Tiny::Subclassable; JSON::Tiny::Subclassable->new }
     };
-    $code->(shift);
+    $json;
 _
 
         {
@@ -514,8 +504,8 @@ _
                         if (($specmeta->{parsed}{type} // '') =~ /\@/) {
                             push @l, 'if ($mentioned_args{\'', $specmeta->{arg}, '\'}++) { push @{ $_pci_args{\'', $specmeta->{arg}, '\'} }, $_[1] } else { $_pci_args{\'', $specmeta->{arg}, '\'} = [$_[1]] }';
                         } elsif ($specmeta->{is_json}) {
-                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_decode_json($_[1]);';
-                            _add_module($cd, "JSON::Tiny");
+                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json->decode($_[1]);';
+                            _add_module($cd, "JSON::Tiny::Subclassable");
                         } else {
                             push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
                         }
