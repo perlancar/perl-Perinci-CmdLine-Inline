@@ -313,6 +313,7 @@ sub gen_inline_pericmd_script {
             $copts{help} = $Perinci::CmdLine::Base::copts{help};
             $copts{version} = $Perinci::CmdLine::Base::copts{version};
             unless ($skip_format) {
+                _add_module($cd, "JSON::Tiny");
                 $copts{json} = $Perinci::CmdLine::Base::copts{json};
                 $copts{format} = $Perinci::CmdLine::Base::copts{format};
                 # "naked_res!" currently not supported by
