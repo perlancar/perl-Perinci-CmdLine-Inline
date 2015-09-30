@@ -6,6 +6,7 @@ package Perinci::CmdLine::Inline;
 use 5.010001;
 use strict;
 use warnings;
+use Log::Any::IfLOG qw($log);
 
 use Data::Dmp;
 use Module::Path::More qw(module_path);
@@ -24,11 +25,14 @@ sub _deparse {
     Data::Dumper::Dumper($_[0]);
 }
 
-sub _get_module {
-    my $path = module_path(module => $_[0]) or die "Can't load module '$_[0]'";
+sub _add_module {
+    my ($cd, $mod) = @_;
+    return if $cd->{module_srcs}{$mod};
+    $log->infof("Adding source code of module %s ...", $mod);
+    my $path = module_path(module => $mod) or die "Can't load module '$mod'";
     local $/;
     open my($fh), "<", $path or die "Can't read file '$path': $!";
-    ~~<$fh>;
+    $cd->{module_srcs}{$mod} = <$fh>;
 }
 
 # keep synchronize with Perinci::CmdLine::Base
@@ -281,16 +285,17 @@ sub gen_inline_pericmd_script {
         modules => {},
         vars => {},
         subs => {},
-        module_srcs => {
-            map {$_ => _get_module($_)} (
-                "Data::Check::Structure",
-                "Text::Table::Tiny",
-                "Getopt::Long::EvenLess",
-                "Perinci::Result::Format::Lite",
-                @{ $args{include} // [] },
-            )
-        },
+        module_srcs => {},
     };
+
+    for ("Data::Check::Structure",
+         "Getopt::Long::EvenLess",
+         "Perinci::Result::Format::Lite",
+         "Text::Table::Tiny",
+         @{ $args{include} // [] },
+     ) {
+        _add_module($cd, $_);
+    }
 
   GEN_SCRIPT:
     {
@@ -349,13 +354,23 @@ _
     print "\n";
 _
 
-        $cd->{subs}{_pci_json} = <<'_';
-     state $json = do {
-        # XXX try JSON::XS first, fallback to JSON::PP
-        require JSON::PP;
-        JSON::PP->new->canonical(1)->allow_nonref;
+        # not yet needed
+        #        $cd->{subs}{_pci_encode_json} = <<'_';
+        #    state $code = do {
+        #        if    (eval { require JSON::XS; 1 }) { my $json = JSON::XS->new->canonical(1)->allow_nonref; sub { $json->encode(shift) } }
+        #        elsif (eval { require JSON::PP; 1 }) { my $json = JSON::PP->new->canonical(1)->allow_nonref; sub { $json->encode(shift) } }
+        #        else { require JSON::Tiny; \&JSON::Tiny::encode_json }
+        #    };
+        #    $code->(shift);
+        #_
+
+        $cd->{subs}{_pci_decode_json} = <<'_';
+    state $code = do {
+        if    (eval { require JSON::XS; 1 }) { my $json = JSON::XS->new->canonical(1)->allow_nonref; sub { $json->decode(shift) } }
+        elsif (eval { require JSON::PP; 1 }) { my $json = JSON::PP->new->canonical(1)->allow_nonref; sub { $json->decode(shift) } }
+        else { require JSON::Tiny; \&JSON::Tiny::decode_json }
     };
-    $json;
+    $code->(shift);
 _
 
         {
@@ -498,7 +513,8 @@ _
                         if (($specmeta->{parsed}{type} // '') =~ /\@/) {
                             push @l, 'if ($mentioned_args{\'', $specmeta->{arg}, '\'}++) { push @{ $_pci_args{\'', $specmeta->{arg}, '\'} }, $_[1] } else { $_pci_args{\'', $specmeta->{arg}, '\'} = [$_[1]] }';
                         } elsif ($specmeta->{is_json}) {
-                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json->decode($_[1]);';
+                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_decode_json($_[1]);';
+                            _add_module($cd, "JSON::Tiny");
                         } else {
                             push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
                         }
@@ -690,10 +706,6 @@ _
 =head1 DESCRIPTION
 
 B<EARLY DEVELOPMENT.>
-
-Sample startup overhead benchmark vs Perinci::CmdLine::Lite:
-
-# COMMAND: perl devscripts/bench-startup
 
 
 =head1 SEE ALSO
