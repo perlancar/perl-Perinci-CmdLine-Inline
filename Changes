@@ -1,5 +1,17 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.27    2015-09-30 (PERLANCAR)
+
+	- Switch from JSON::Tiny to JSON::Tiny::Subclassable because the
+	  latter's interface is more conveniently similar to JSON::{PP,XS}.
+
+
+0.26    2015-09-30 (PERLANCAR)
+
+        - [Bugfix] Embed a JSON encoder/decoder module (we choose JSON::Tiny)
+          because JSON::PP is not yet core in perl < 5.14 [CT].
+
+
 0.25    2015-09-29 (PERLANCAR)
 
         - Observe result metadata attributes: cmdline.default_format,
