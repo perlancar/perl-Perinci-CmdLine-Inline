@@ -1,5 +1,13 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.28    2015-10-03 (PERLANCAR)
+
+	- No functional changes.
+
+	- Update mentioned module App::fatten (has been renamed to
+	  App::depak).
+
+
 0.27    2015-09-30 (PERLANCAR)
 
 	- Switch from JSON::Tiny to JSON::Tiny::Subclassable because the
