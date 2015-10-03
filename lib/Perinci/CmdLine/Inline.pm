@@ -131,7 +131,7 @@ Currently it only supports a subset of features compared to other
 * and so on.
 
 As an alternative to this module, if you are looking to reduce dependencies, you
-might also want to try using `fatten` to fatpack your
+might also want to try using `depak` to fatpack/datapack your
 `Perinci::CmdLine::Lite`-based script.
 
 TODO:
