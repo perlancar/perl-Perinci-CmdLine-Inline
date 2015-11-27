@@ -483,6 +483,8 @@ _
                         push @l2, ' } else { $fh = \*STDIN }';
                         if ($arg_spec->{stream}) {
                             push @l2, ' $_pci_args{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
+                        } elsif ($type eq 'array') {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; [<$fh>] }';
                         } else {
                             push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<$fh> }';
                         }
@@ -494,6 +496,8 @@ _
                         push @l2, ' open my($fh), "<", $_pci_args{"'.$arg.'"} or _pci_err([500,"Cannot open file \'".$_pci_args{"'.$arg.'"}."\': $!"]);';
                         if ($arg_spec->{stream}) {
                             push @l2, ' $_pci_args{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
+                        } elsif ($type eq 'array') {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; [<$fh>] }';
                         } else {
                             push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<$fh> }';
                         }
@@ -505,6 +509,8 @@ _
                         push @l2, '    unless (exists $_pci_args{"'.$arg.'"}) {';
                         if ($arg_spec->{stream}) {
                             push @l2, ' $_pci_args{"'.$arg.'"} = _pci_gen_iter(\*STDIN, "'.$type.'", "'.$arg.'")';
+                        } elsif ($type eq 'array') {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; [<STDIN>] }';
                         } else {
                             push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<STDIN> }';
                         }
@@ -517,6 +523,8 @@ _
                         push @l2, ' @check_argv = ();';
                         if ($arg_spec->{stream}) {
                             push @l2, ' $_pci_args{"'.$arg.'"} = _pci_gen_iter(\*ARGV, "'.$type.'", "'.$arg.'")';
+                        } elsif ($type eq 'array') {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; [<>] }';
                         } else {
                             push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<> }';
                         }
