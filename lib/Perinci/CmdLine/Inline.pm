@@ -291,6 +291,7 @@ sub gen_inline_pericmd_script {
     };
 
     for ("Data::Check::Structure",
+         "Data::Sah::Util::Type",
          "Getopt::Long::EvenLess",
          "Perinci::Result::Format::Lite",
          "Text::Table::Tiny",
@@ -338,6 +339,42 @@ sub gen_inline_pericmd_script {
             $shebang_line = "#!$shebang_line" unless $shebang_line =~ /\A#!/;
             $shebang_line .= "\n" unless $shebang_line =~ /\R\z/;
         }
+
+        $cd->{subs}{_pci_gen_iter} = <<'_';
+    require Data::Sah::Util::Type;
+    my ($fh, $type, $argname) = @_;
+    if (Data::Sah::Util::Type::is_simple($type)) {
+        return sub {
+            # XXX this will be configurable later. currently by default reading
+            # binary is per-64k while reading string is line-by-line.
+            local $/ = \(64*1024) if $type eq 'buf';
+
+            state $eof;
+            return undef if $eof;
+            my $l = <$fh>;
+            unless (defined $l) {
+                $eof++; return undef;
+            }
+            $l;
+        };
+    } else {
+        my $i = -1;
+        return sub {
+            state $eof;
+            return undef if $eof;
+            $i++;
+            my $l = <$fh>;
+            unless (defined $l) {
+                $eof++; return undef;
+            }
+            eval { $l = _pci_json()->decode($l) };
+            if ($@) {
+                die "Invalid JSON in stream argument '$argname' record #$i: $@";
+            }
+            $l;
+        };
+    }
+_
 
         $cd->{subs}{_pci_err} = <<'_';
     my $res = shift;
@@ -412,6 +449,84 @@ _
                 push @l2, " }\n";
             }
             push @l2, "    }\n";
+            push @l2, '    my @check_argv = @ARGV;', "\n";
+
+            push @l2, '    # fill from cmdline_src', "\n";
+            {
+                my $stdin_seen;
+                for my $arg (sort {
+                    my $asa = $args_prop->{$a};
+                    my $asb = $args_prop->{$b};
+                    my $csa = $asa->{cmdline_src} // '';
+                    my $csb = $asb->{cmdline_src} // '';
+                    # stdin_line is processed before stdin
+                    ($csa eq 'stdin_line' ? 1:2) <=>
+                        ($csa eq 'stdin_line' ? 1:2)
+                        ||
+                        ($asa->{pos} // 9999) <=> ($asb->{pos} // 9999)
+                    } keys %$args_prop) {
+                    my $arg_spec = $args_prop->{$arg};
+                    my $cs = $arg_spec->{cmdline_src};
+                    my $type = Data::Sah::Util::Type::get_type($arg_spec->{schema} // '');
+                    next unless $cs;
+                    if ($cs eq 'stdin_line') {
+                        # XXX support stdin_line, cmdline_prompt, is_password (for disabling echo)
+                        return [501, "cmdline_src=stdin_line is not yet supported"];
+                    } elsif ($cs eq 'stdin_or_file') {
+                        return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
+                            if defined $stdin_seen;
+                        $stdin_seen = $arg;
+                        # XXX support - to mean stdin
+                        push @l2, ' { my $fh;';
+                        push @l2, ' if (exists $_pci_args{"'.$arg.'"}) {';
+                        push @l2, ' open $fh, "<", $_pci_args{"'.$arg.'"} or _pci_err([500,"Cannot open file \'".$_pci_args{"'.$arg.'"}."\': $!"]);';
+                        push @l2, ' } else { $fh = \*STDIN }';
+                        if ($arg_spec->{stream}) {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
+                        } else {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<$fh> }';
+                        }
+                        push @l2, " }\n";
+                    } elsif ($cs eq 'file') {
+                        # XXX support - to mean stdin
+                        push @l2, '    if (!(exists $_pci_args{"'.$arg.'"}) && '.($arg_spec->{req} ? 1:0).') { _pci_err([500,"Please specify filename for argument \''.$arg.'\'"]) }';
+                        push @l2, ' if (exists $_pci_args{"'.$arg.'"}) {';
+                        push @l2, ' open my($fh), "<", $_pci_args{"'.$arg.'"} or _pci_err([500,"Cannot open file \'".$_pci_args{"'.$arg.'"}."\': $!"]);';
+                        if ($arg_spec->{stream}) {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
+                        } else {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<$fh> }';
+                        }
+                        push @l2, " }\n";
+                    } elsif ($cs eq 'stdin') {
+                        return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
+                            if defined $stdin_seen;
+                        $stdin_seen = $arg;
+                        push @l2, '    unless (exists $_pci_args{"'.$arg.'"}) {';
+                        if ($arg_spec->{stream}) {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = _pci_gen_iter(\*STDIN, "'.$type.'", "'.$arg.'")';
+                        } else {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<STDIN> }';
+                        }
+                        push @l2, " }\n";
+                    } elsif ($cs eq 'stdin_or_files') {
+                        return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
+                            if defined $stdin_seen;
+                        $stdin_seen = $arg;
+                        push @l2, '    unless (exists $_pci_args{"'.$arg.'"}) {';
+                        push @l2, ' @check_argv = ();';
+                        if ($arg_spec->{stream}) {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = _pci_gen_iter(\*ARGV, "'.$type.'", "'.$arg.'")';
+                        } else {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<> }';
+                        }
+                        push @l2, " }\n";
+                    } else {
+                        return [400, "arg $arg: unknown cmdline_src value '$cs'"];
+                    }
+                }
+            }
+            push @l2, "\n";
 
             push @l2, '    # fill defaults', "\n";
             for my $arg (sort keys %$args_prop) {
@@ -439,6 +554,7 @@ _
                 }
             }
 
+            push @l2, '    _pci_err([500, "Extraneous command-line argument(s): ".join(", ", @check_argv)]) if @check_argv;', "\n";
             push @l2, '    [200];', "\n";
             $cd->{subs}{_pci_check_args} = join('', @l2);
         }
@@ -506,7 +622,7 @@ _
                         if (($specmeta->{parsed}{type} // '') =~ /\@/) {
                             push @l, 'if ($mentioned_args{\'', $specmeta->{arg}, '\'}++) { push @{ $_pci_args{\'', $specmeta->{arg}, '\'} }, $_[1] } else { $_pci_args{\'', $specmeta->{arg}, '\'} = [$_[1]] }';
                         } elsif ($specmeta->{is_json}) {
-                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json->decode($_[1]);';
+                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json()->decode($_[1]);';
                             _add_module($cd, "JSON::Tiny::Subclassable");
                         } else {
                             push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
@@ -523,7 +639,6 @@ _
             push @l, '$res = _pci_check_args(\%_pci_args);', "\n";
             push @l, '_pci_err($res) if $res->[0] != 200;', "\n";
             push @l, '_pci_debug("args after _pci_check_args: ", \%_pci_args);', "\n" if $args{with_debug};
-            push @l, '_pci_err([500, "Extraneous command-line argument(s): ".join(", ", @ARGV)]) if @ARGV;', "\n";
         }
         push @l, "}\n\n";
 
@@ -550,7 +665,7 @@ _
         push @l, 'else { require Perinci::Result::Format::Lite; $is_stream=0; $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
         push @l, "\n";
         push @l, 'if ($is_stream) {', "\n";
-        push @l, '    my $code = $_pci_r->{res}[2]; if (ref($code) ne "CODE") { die "Result is a stream but no coderef provided" } if ('.(Data::Sah::Util::Type::is_simple($type) ? 1:0).') { while(defined(my $l=$code->())) { print $l; print "\n" unless "'.($type).'" eq "buf"; } } else { while (defined(my $rec=$code->())) { print _pci_json->encode($rec),"\n" } }', "\n";
+        push @l, '    my $code = $_pci_r->{res}[2]; if (ref($code) ne "CODE") { die "Result is a stream but no coderef provided" } if ('.(Data::Sah::Util::Type::is_simple($type) ? 1:0).') { while(defined(my $l=$code->())) { print $l; print "\n" unless "'.($type).'" eq "buf"; } } else { while (defined(my $rec=$code->())) { print _pci_json()->encode($rec),"\n" } }', "\n";
         push @l, '} else {', "\n";
         push @l, '    print $fres;', "\n";
         push @l, '}', "\n";
