@@ -228,6 +228,8 @@ _
     },
 };
 sub gen_inline_pericmd_script {
+    require Data::Sah::Util::Type;
+
     my %args = @_;
 
     my $validate_args = $args{validate_args} // 1;
@@ -535,13 +537,23 @@ _
         push @l, 'if ($@) { $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
         push @l, "}\n\n";
 
-        # generate code to display result
-        push @l, "# display result\n\n";
+        # generate code to format & display result
+        my $type = Data::Sah::Util::Type::get_type($meta->{result}{schema}//'') // '';
+        push @l, "# format & display result\n\n";
         push @l, "{\n";
         push @l, 'my $fres;', "\n";
         push @l, 'my $save_res; if (exists $_pci_r->{res}[3]{"cmdline.result"}) { $save_res = $_pci_r->{res}[2]; $_pci_r->{res}[2] = $_pci_r->{res}[3]{"cmdline.result"} }', "\n";
-        push @l, 'if (', ($skip_format ? 1:0), ' || $_pci_r->{res}[3]{"cmdline.skip_format"}) { $fres = $_pci_r->{res}[2] } else { require Perinci::Result::Format::Lite; $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
-        push @l, 'print $fres;', "\n";
+        push @l, 'my $is_success = $_pci_r->{res}[0] =~ /\A2/ || $_pci_r->{res}[0] == 304;', "\n";
+        push @l, 'my $is_stream = $_pci_r->{res}[3]{stream} // ' . ($meta->{result}{stream} ? 1:'undef'), " // 0;\n";
+        push @l, 'if ($is_success && (', ($skip_format ? 1:0), ' || $_pci_r->{res}[3]{"cmdline.skip_format"})) { $fres = $_pci_r->{res}[2] }', "\n";
+        push @l, 'elsif ($is_success && $is_stream) {}', "\n";
+        push @l, 'else { require Perinci::Result::Format::Lite; $is_stream=0; $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
+        push @l, "\n";
+        push @l, 'if ($is_stream) {', "\n";
+        push @l, '    my $code = $_pci_r->{res}[2]; if (ref($code) ne "CODE") { die "Result is a stream but no coderef provided" } if ('.(Data::Sah::Util::Type::is_simple($type) ? 1:0).') { while(defined(my $l=$code->())) { print $l; print "\n" unless "'.($type).'" eq "buf"; } } else { while (defined(my $rec=$code->())) { print _pci_json->encode($rec),"\n" } }', "\n";
+        push @l, '} else {', "\n";
+        push @l, '    print $fres;', "\n";
+        push @l, '}', "\n";
         push @l, 'if (defined $save_res) { $_pci_r->{res}[2] = $save_res }', "\n";
         push @l, "}\n\n";
 
