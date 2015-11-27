@@ -1,5 +1,12 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.30    2015-11-27 (PERLANCAR)
+
+	- Add support for streaming input (most of cmdline_src support are now
+          implemented too, except for: cmdline_src=stdin_line, the
+          -cmdline_src_XXX special arguments, and probably some minor quirks).
+
+
 0.29    2015-11-27 (PERLANCAR)
 
 	- Add support for streaming output (streaming input not yet).
