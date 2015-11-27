@@ -828,6 +828,15 @@ _
 B<EARLY DEVELOPMENT.>
 
 
+=head1 FAQ
+
+=head2 What about tab completion?
+
+Use L<App::GenPericmdCompleterScript> to generate a separate completion script.
+If you use L<Dist::Zilla>, see also L<Dist::Zilla::Plugin::GenPericmdScript>
+which lets you generate script (and its completion script) during build.
+
+
 =head1 SEE ALSO
 
 L<Perinci::CmdLine>, L<Perinci::CmdLine::Any>, L<Perinci::CmdLine::Lite>,
