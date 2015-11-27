@@ -117,13 +117,7 @@ Currently it only supports a subset of features compared to other
 * Only support local Riap URL (e.g. `/Foo/bar`, not
   `http://example.org/Foo/bar`);
 
-* No tab completion;
-
 * No subcommands support yet;
-
-* No support for streaming input or output;
-
-* No support for cmdline_src argument specification property;
 
 * No support for per_arg_yaml (not used as often as per_arg_json, no core module
   for parsing YAML).
