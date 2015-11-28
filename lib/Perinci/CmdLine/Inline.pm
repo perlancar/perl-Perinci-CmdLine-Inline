@@ -652,6 +652,9 @@ _
             if $args{pass_cmdline_object};
         push @l, 'eval { $_pci_r->{res} = ', $func_name, '(%_pci_args) };', "\n";
         push @l, 'if ($@) { $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
+        if ($meta->{result_naked}) {
+            push @l, '$_pci_r->{res} = [200, "OK (envelope added by Perinci::CmdLine::Inline)", $_pci_r->{res}];', "\n";
+        }
         push @l, "}\n\n";
 
         # generate code to format & display result
