@@ -90,6 +90,11 @@ _
         schema  => 'bool*',
         default => 0,
     },
+    use_utf8 => {
+        summary => 'Whether to set utf8 flag on output',
+        schema  => 'bool*',
+        default => 0,
+    },
 );
 
 $SPEC{gen_inline_pericmd_script} = {
@@ -669,6 +674,10 @@ _
         push @l, 'elsif ($is_success && $is_stream) {}', "\n";
         push @l, 'else { require Perinci::Result::Format::Lite; $is_stream=0; $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
         push @l, "\n";
+
+        push @l, 'my $use_utf8 = $_pci_r->{res}[3]{"x.hint.result_binary"} ? 0 : '.($args{use_utf8} ? 1:0).";\n";
+        push @l, 'if ($use_utf8) { binmode STDOUT, ":utf8" }', "\n";
+
         push @l, 'if ($is_stream) {', "\n";
         push @l, '    my $code = $_pci_r->{res}[2]; if (ref($code) ne "CODE") { die "Result is a stream but no coderef provided" } if ('.(Data::Sah::Util::Type::is_simple($type) ? 1:0).') { while(defined(my $l=$code->())) { print $l; print "\n" unless "'.($type).'" eq "buf"; } } else { while (defined(my $rec=$code->())) { print _pci_json()->encode($rec),"\n" } }', "\n";
         push @l, '} else {', "\n";
