@@ -1,5 +1,11 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.33    2016-01-15 (PERLANCAR)
+
+	- Replace Data::Dumper with Data::Dmp to avoid failure of running
+	  the generated code dump on older perls [CT].
+
+
 0.32    2016-01-14 (PERLANCAR)
 
 	- Add option: use_utf8.
