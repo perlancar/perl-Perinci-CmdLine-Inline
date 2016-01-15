@@ -16,15 +16,6 @@ our @EXPORT_OK = qw(gen_inline_pericmd_script);
 
 our %SPEC;
 
-sub _deparse {
-    require Data::Dumper;
-    no warnings 'once';
-    local $Data::Dumper::Deparse = 1;
-    local $Data::Dumper::Terse   = 1;
-    local $Data::Dumper::Indent  = 0;
-    Data::Dumper::Dumper($_[0]);
-}
-
 sub _add_module {
     my ($cd, $mod) = @_;
     return if $cd->{module_srcs}{$mod};
@@ -382,15 +373,8 @@ _
 _
 
         $cd->{subs}{_pci_debug} = <<'_' if $args{with_debug};
-    no warnings "once";
-    require Data::Dumper;
-    local $Data::Dumper::Terse = 1;
-    local $Data::Dumper::Indent = 0;
-    print "DEBUG: ";
-    for (@_) {
-        if (ref($_)) { print Data::Dumper::Dumper($_) } else { print $_ }
-    }
-    print "\n";
+    require Data::Dmp;
+    print "DEBUG: ", Data::Dmp::dmp(@_), "\n";
 _
 
         $cd->{subs}{_pci_json} = <<'_';
@@ -620,7 +604,7 @@ _
                     if ($specmeta->{is_alias} && $specmeta->{is_code}) {
                         my $alias_spec = $arg_spec->{cmdline_aliases}{$specmeta->{alias}};
                         if ($specmeta->{is_code}) {
-                            push @l, 'my $code = ', _deparse($alias_spec->{code}), '; ';
+                            push @l, 'my $code = ', dmp($alias_spec->{code}), '; ';
                             push @l, '$code->(\%_pci_args);';
                         } else {
                             push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
@@ -653,7 +637,7 @@ _
         push @l, "# call function\n\n";
         push @l, "{\n";
         push @l, "require $mod;\n" if $mod;
-        push @l, '$_pci_args{-cmdline} = Perinci::CmdLine::Inline::Object->new(@{', _deparse([%args]), '});', "\n"
+        push @l, '$_pci_args{-cmdline} = Perinci::CmdLine::Inline::Object->new(@{', dmp([%args]), '});', "\n"
             if $args{pass_cmdline_object};
         push @l, 'eval { $_pci_r->{res} = ', $func_name, '(%_pci_args) };', "\n";
         push @l, 'if ($@) { $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
