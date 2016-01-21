@@ -25,7 +25,9 @@ pericmd_ok(
         'cmdline_src',
         'env',
         'config-file',
-        #'streaming-input',
+        'validate-streaming-input',
+        'validate-streaming-result',
+        'validate-result',
     ],
 );
 done_testing;
