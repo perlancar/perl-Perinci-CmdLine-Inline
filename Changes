@@ -1,5 +1,13 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.34    2016-01-21 (PERLANCAR)
+
+	- Update to Test::Perinci::CmdLine 1.33.
+
+	- [Bugfix] Don't render module version during script generation,
+	  let the generated script resolve VERSION and DATE.
+
+
 0.33    2016-01-15 (PERLANCAR)
 
 	- Replace Data::Dumper with Data::Dmp to avoid failure of running
