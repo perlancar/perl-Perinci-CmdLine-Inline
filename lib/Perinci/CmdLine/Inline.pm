@@ -578,6 +578,7 @@ _
                     } elsif ($specmeta->{common_opt} eq 'version') {
                         no strict 'refs';
                         push @l, "        no warnings 'once';\n";
+                        push @l, "        require $mod;\n" if $mod;
                         push @l, '        print "', $script_name , ' version ", ',
                             (defined($args{script_version}) ? "\"$args{script_version}\"" :
                              "(\$$mod\::VERSION // '?')"),
