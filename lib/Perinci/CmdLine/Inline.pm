@@ -450,7 +450,9 @@ _
                     } keys %$args_prop) {
                     my $arg_spec = $args_prop->{$arg};
                     my $cs = $arg_spec->{cmdline_src};
-                    my $type = Data::Sah::Util::Type::get_type($arg_spec->{schema} // '');
+                    my $sch = $arg_spec->{schema} // '';
+                    $sch = $sch->[1]{of} if $arg_spec->{stream} && $sch->[0] eq 'array';
+                    my $type = Data::Sah::Util::Type::get_type($sch);
                     next unless $cs;
                     if ($cs eq 'stdin_line') {
                         # XXX support stdin_line, cmdline_prompt, is_password (for disabling echo)
