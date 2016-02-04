@@ -1,5 +1,13 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.35    2016-02-04 (PERLANCAR)
+
+        - [Bugfix] When streaming input (argument) has schema=array, use its
+          'of' clause subschema.
+
+        - Update to Test::Perinci::CmdLine 1.38.
+
+
 0.34    2016-01-21 (PERLANCAR)
 
 	- Update to Test::Perinci::CmdLine 1.33.
