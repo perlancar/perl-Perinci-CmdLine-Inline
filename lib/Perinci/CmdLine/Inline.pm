@@ -514,6 +514,20 @@ _
                             push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<> }';
                         }
                         push @l2, " }\n";
+                    } elsif ($cs eq 'stdin_or_args') {
+                        return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
+                            if defined $stdin_seen;
+                        $stdin_seen = $arg;
+                        push @l2, '    unless (exists $_pci_args{"'.$arg.'"}) {';
+                        push @l2, ' @check_argv = ();';
+                        if ($arg_spec->{stream}) {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = _pci_gen_iter(\*STDIN, "'.$type.'", "'.$arg.'")';
+                        } elsif ($type eq 'array') {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; [map {chomp;$_} <>] }';
+                        } else {
+                            push @l2, ' $_pci_args{"'.$arg.'"} = do { local $/; ~~<> }';
+                        }
+                        push @l2, " }\n";
                     } else {
                         return [400, "arg $arg: unknown cmdline_src value '$cs'"];
                     }

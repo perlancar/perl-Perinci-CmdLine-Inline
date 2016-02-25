@@ -19,10 +19,12 @@ pericmd_ok(
         'completion',
         'tx',
 
+        # already supported, but suite doesn't work yet
+        'cmdline_src',
+
         # currently unsupported
         'dry-run',
         'subcommand',
-        'cmdline_src',
         'env',
         'config-file',
         'validate-streaming-input',
