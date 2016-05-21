@@ -1,5 +1,25 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.38    2016-03-21 (PERLANCAR) (unreleased)
+
+        [ENHANCEMENTS]
+
+        - Add argument validation.
+
+        - [Optimization] Don't include unneeded modules and subroutines (e.g. no
+          need to include Text::Table::Tiny and Perinci::Result::Format::Lite if
+          we don't do formatting, no need for _pci_gen_iter() when we don't
+          accept streaming input or lines from stdin/file, etc).
+
+        - [Optimization] Delay loading _pci_check_args, so --help and --version
+          can be a bit faster.
+
+        [BUG FIXES]
+
+        - Data cleansing was stil using (unincluded) Data::Clean::JSON instead
+          of our own generated cleanser.
+
+
 0.37    2016-03-16 (PERLANCAR)
 
 	- No functional changes.
