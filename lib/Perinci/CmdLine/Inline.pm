@@ -578,7 +578,7 @@ _
             {
                 my $has_validation;
                 my @l3;
-                my %req_stmts_mem;
+                my @modules_for_all_args;
                 my @req_stmts;
                 for my $arg (sort keys %$args_prop) {
                     my $arg_spec = $args_prop->{$arg};
@@ -602,31 +602,26 @@ _
                             core_or_pp => 1,
                             ( whitelist_modules => $args{allow_prereq} ) x !!$args{allow_prereq},
                         );
-                        my $modstmts = $dsah_cd->{module_statements};
-                        my $mods = $dsah_cd->{modules};
+                        die "Incompatible Data::Sah version (cd v=$dsah_cd->{v}, expected 2)" unless $dsah_cd->{v} == 2;
                         # add require statements for modules needed during
                         # validation
-                        for my $mod (@$mods) {
-                            my $mod_is_core = Module::CoreList::More->is_still_core($mod);
+                        for my $mod_rec (@{$dsah_cd->{modules}}) {
+                            next unless $mod_rec->{phase} eq 'runtime';
+                            next if grep { ($mod_rec->{use_statement} && $_->{use_statement} && $_->{use_statement} eq $mod_rec->{use_statement}) ||
+                                               $_->{name} eq $mod_rec->{name} } @modules_for_all_args;
+                            push @modules_for_all_args, $mod_rec;
+                            my $mod_is_core = Module::CoreList::More->is_still_core($mod_rec->{name});
                             $log->warnf("Validation code requires non-core module '%s'", $mod)
-                                unless $mod_is_core;
-                            my $stmt;
-                            if ($modstmts->{$mod}) {
-                                my $dmp = join ",", @{ $modstmts->{$mod}[1] };
-                                $stmt = $modstmts->{$mod}[0]." $mod".($dmp ? " ($dmp)":"");
-                            } else {
-                                # skip modules that we already include in the script
-                                next if $cd->{module_srcs}{$mod};
-                                # skip modules that we already require at the
-                                # beginning of script
-                                next if exists $cd->{req_modules}{$mod};
-                                $stmt = "require $mod";
+                                unless $mod_is_core && !($args{allow_prereq} && grep { $_ eq $mod_rec->{name} } @{$args{allow_prereq}});
+                            # skip modules that we already include in the script
+                            next if $cd->{module_srcs}{$mod_rec->{name}};
+                            # skip modules that we already require at the
+                            # beginning of script
+                            next if exists $cd->{req_modules}{$mod_rec->{name}};
+                            unless ($mod_is_core || $cd->{module_srcs}{$mod_rec->{name}}) {
+                                $cd->{req_modules}{$mod_rec->{name}} = 0;
                             }
-                            next if $req_stmts_mem{$stmt}++;
-                            unless ($mod_is_core || $cd->{module_srcs}{$mod}) {
-                                $cd->{req_modules}{$mod} = 0;
-                            }
-                            push @req_stmts, $stmt;
+                            push @req_stmts, _dsah_plc->stmt_require_module($mod_rec);
                         }
                         push @l3, "    if (exists $arg_term) {\n";
                         push @l3, "        \$_sahv_dpath = [];\n";
@@ -638,7 +633,7 @@ _
                 push @l3, "\n";
 
                 if ($has_validation) {
-                    push @l2, map {"    $_;\n"} @req_stmts;
+                    push @l2, map {"    $_\n"} @req_stmts;
                     push @l2, "    my \$_sahv_dpath;\n";
                     push @l2, "    my \$_sahv_err;\n";
                 }
