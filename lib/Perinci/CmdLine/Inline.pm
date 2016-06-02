@@ -205,6 +205,18 @@ _
             tags => ['category:extra-code'],
         },
 
+        allow_prereq => {
+            summary => 'A list of modules that can be depended upon',
+            schema => ['array*', of=>'str*'], # XXX perl::modname
+            description => <<'_',
+
+By default, Perinci::CmdLine::Inline will strive to make the script freestanding
+and require core modules. A dependency to a non-core module will cause failure.
+However, you can pass a list of modules that is allowed here.
+
+_
+        },
+
         output_file => {
             summary => 'Set output file, defaults to stdout',
             schema => 'str*',
@@ -588,6 +600,7 @@ _
                             return_type => 'str',
 
                             core_or_pp => 1,
+                            ( whitelist_modules => $args{allow_prereq} ) x !!$args{allow_prereq},
                         );
                         my $modstmts = $dsah_cd->{module_statements};
                         my $mods = $dsah_cd->{modules};
