@@ -590,7 +590,6 @@ _
                     if ($arg_schema) {
                         $has_validation++;
                         my $dsah_cd = _dsah_plc->compile(
-                            data_name => $arg,
                             schema => $arg_schema,
                             schema_is_normalized => 1,
                             indent_level => 2,
@@ -610,11 +609,13 @@ _
                             next if grep { ($mod_rec->{use_statement} && $_->{use_statement} && $_->{use_statement} eq $mod_rec->{use_statement}) ||
                                                $_->{name} eq $mod_rec->{name} } @modules_for_all_args;
                             push @modules_for_all_args, $mod_rec;
+                            if ($mod_rec->{name} =~ /\A(Scalar::Util::Numeric::PP)\z/) {
+                                _add_module($cd, $mod_rec->{name});
+                            }
                             my $mod_is_core = Module::CoreList::More->is_still_core($mod_rec->{name});
                             $log->warnf("Validation code requires non-core module '%s'", $mod)
-                                unless $mod_is_core && !($args{allow_prereq} && grep { $_ eq $mod_rec->{name} } @{$args{allow_prereq}});
-                            # skip modules that we already include in the script
-                            next if $cd->{module_srcs}{$mod_rec->{name}};
+                                unless $mod_is_core && !$cd->{module_srcs}{$mod_rec->{name}} &&
+                                !($args{allow_prereq} && grep { $_ eq $mod_rec->{name} } @{$args{allow_prereq}});
                             # skip modules that we already require at the
                             # beginning of script
                             next if exists $cd->{req_modules}{$mod_rec->{name}};
