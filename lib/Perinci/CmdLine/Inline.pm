@@ -618,9 +618,6 @@ _
                             # skip modules that we already require at the
                             # beginning of script
                             next if exists $cd->{req_modules}{$mod_rec->{name}};
-                            unless ($mod_is_core || $cd->{module_srcs}{$mod_rec->{name}}) {
-                                $cd->{req_modules}{$mod_rec->{name}} = 0;
-                            }
                             push @req_stmts, _dsah_plc->stmt_require_module($mod_rec);
                         }
                         push @l3, "    if (exists $arg_term) {\n";
