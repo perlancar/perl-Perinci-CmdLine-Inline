@@ -582,6 +582,10 @@ _
                 my @req_stmts;
                 for my $arg (sort keys %$args_prop) {
                     my $arg_spec = $args_prop->{$arg};
+
+                    # we don't validate streaming input for now
+                    next if $arg_spec->{stream};
+
                     my $arg_schema = $arg_spec->{schema};
                     my $arg_term = '$args->{"'.$arg.'"}';
                     if (defined $arg_spec->{default}) {
