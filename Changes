@@ -6,10 +6,13 @@ Revision history for Perinci-CmdLine-Inline
 
         - Add argument validation.
 
-        - [Optimization] Don't include unneeded modules and subroutines (e.g. no
-          need to include Text::Table::Tiny and Perinci::Result::Format::Lite if
-          we don't do formatting, no need for _pci_gen_iter() when we don't
-          accept streaming input or lines from stdin/file, etc).
+        - Add option: allow_prereq.
+
+        - [Optimization] Don't include unneeded modules and subroutines to make
+          resulting script smaller (e.g. no need to include Text::Table::Tiny
+          and Perinci::Result::Format::Lite if we don't do formatting, no need
+          for _pci_gen_iter() when we don't accept streaming input or lines from
+          stdin/file, etc).
 
         - [Optimization] Delay loading _pci_check_args, so --help and --version
           can be a bit faster.
