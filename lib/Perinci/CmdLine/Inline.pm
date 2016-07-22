@@ -71,9 +71,8 @@ my %pericmd_attrs = (
     },
     url => {
         summary => 'Program URL',
-        schema => 'str*',
+        schema => 'riap::url*',
         pos => 0,
-        'x.schema.entity' => 'riap_url',
     },
     extra_urls_for_version => {
         summary => 'More URLs to show version for --version',
