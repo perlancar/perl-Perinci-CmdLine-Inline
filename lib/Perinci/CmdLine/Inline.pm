@@ -103,14 +103,14 @@ $SPEC{gen_inline_pericmd_script} = {
     description => <<'_',
 
 The goal of this module is to let you create a CLI script from a Riap
-function/metadata. This is like what `Perinci::CmdLine::Lite` or
-`Perinci::CmdLine::Classic` does, except that the generated CLI script will have
+function/metadata. This is like what <pm:Perinci::CmdLine::Lite> or
+<pm:Perinci::CmdLine::Classic> does, except that the generated CLI script will have
 the functionalities inlined so it only need core Perl modules and not any of the
 `Perinci::CmdLine::*` or other modules to run (excluding what modules the Riap
 function itself requires).
 
 It's useful if you want a CLI script that is even more lightweight (in terms of
-startup overhead or dependencies) than the one using `Perinci::CmdLine::Lite`.
+startup overhead or dependencies) than the one using <pm:Perinci::CmdLine::Lite>.
 
 So to reiterate, the goal of this module is to create a Perinci::CmdLine-based
 script which only requires core modules, and has as little startup overhead as
@@ -126,7 +126,7 @@ Currently it only supports a subset of features compared to other
 
 As an alternative to this module, if you are looking to reduce dependencies, you
 might also want to try using `depak` to fatpack/datapack your
-`Perinci::CmdLine::Lite`-based script.
+<pm:Perinci::CmdLine::Lite>-based script.
 
 _
     args_rels => {
