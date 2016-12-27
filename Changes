@@ -1,5 +1,12 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.40    2016-12-28 (PERLANCAR)
+
+	- No functional changes.
+
+        - [dist] Fix expressing follow-spec prereq relationship with x_spec.
+
+
 0.39    2016-12-27 (PERLANCAR)
 
 	- [dist] Move spec prereq from DevelopRecommends to
