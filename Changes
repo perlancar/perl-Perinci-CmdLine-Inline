@@ -1,5 +1,16 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.39    2016-12-27 (PERLANCAR)
+
+	- [dist] Move spec prereq from DevelopRecommends to
+	  DevelopSuggests with _SPEC:: prefix.
+
+	- fmt: use Markdown autolink with pm:/prog: URLs in description so
+	  it can be converted to POD's L<...>.
+
+	- Tweak metadata: replace x.schema.entity with schema.
+
+
 0.38    2016-06-02 (PERLANCAR)
 
         [ENHANCEMENTS]
