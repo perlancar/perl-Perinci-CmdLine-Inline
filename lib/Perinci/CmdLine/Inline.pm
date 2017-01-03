@@ -9,6 +9,7 @@ use warnings;
 use Log::Any::IfLOG qw($log);
 
 use Data::Dmp;
+use List::Util qw(all);
 use Module::CoreList::More;
 use Module::Path::More qw(module_path);
 
@@ -41,7 +42,7 @@ sub _get_meta_from_url {
 
     my $url = shift;
 
-    $url =~ m!\A(?:pl:)?((?:/[^/]+)+)/([^/]+)\z!
+    $url =~ m!\A(?:pl:)?((?:/[^/]+)+)/([^/]*)\z!
         or return [412, "URL scheme not supported, only local Perl ".
                        "URL currently supported"];
     my ($mod_pm, $short_func_name) = ($1, $2);
@@ -49,10 +50,12 @@ sub _get_meta_from_url {
     (my $mod = $mod_pm) =~ s!/!::!g;
     $mod_pm .= ".pm";
     require $mod_pm;
-    my $meta = ${"$mod\::SPEC"}{$short_func_name}
+    my $meta = ${"$mod\::SPEC"}{length $short_func_name ? $short_func_name : ':package'}
         or return [412, "Can't find meta for URL '$url'"];
-    defined &{"$mod\::$short_func_name"}
-        or return [412, "Can't find function for URL '$url'"];
+    if (length $short_func_name) {
+        defined &{"$mod\::$short_func_name"}
+            or return [412, "Can't find function '$short_func_name' for URL '$url'"];
+    }
     my $script_name //= do {
         local $_ = $short_func_name;
         s/_/-/g;
@@ -63,6 +66,9 @@ sub _get_meta_from_url {
         'func.module_version' => ${"$mod\::VERSION"},
         'func.func_name' => "$mod\::$short_func_name",
     }];
+}
+
+sub _gen_parse_opts {
 
 }
 
@@ -297,24 +303,45 @@ sub gen_inline_pericmd_script {
     my $pack_deps = $args{pack_deps} // 1;
     my $script_name = $args{script_name};
 
-    my $meta;
+    my $has_subcommands;
+    my %metas; # key=subcommand name, '' if no subcommands
     my %mods; # key=module name, value={version=>..., ...}
     my %sc_mods; # key=subcommand name, value=module name
     my %func_names; # key=subcommand name, value=qualified function name
   GET_META:
     {
+        my $scs = $args{subcommands};
+        if ($scs) {
+            $has_subcommands++;
+            for my $sc_name (keys %$scs) {
+                my $sc_spec = $scs->{$sc_name};
+                my $res = _get_meta_from_url($sc_spec->{url});
+                return $res if $res->[0] != 200;
+                $mods{ $res->[3]{'func.module'} } = {
+                    version => $res->[3]{'func.module_version'},
+                };
+                $metas{$sc_name} = $res->[2];
+                $sc_mods{$sc_name} = $res->[3]{'func.module'};
+                $func_names{$sc_name} = $res->[3]{'func.name'};
+            }
+        }
+
         my $url = $args{url};
         if ($url) {
             my $res = _get_meta_from_url($url);
             return $res if $res->[0] != 200;
-            $meta = $res->[2];
             $mods{ $res->[3]{'func.module'} } = {
                 version => $res->[3]{'func.module_version'},
             };
-            $sc_mods{''} = $res->[3]{'func.module'};
-            $func_names{''} = $res->[3]{'func.func_name'};
-        } else {
-            $meta = $args{meta};
+            unless ($has_subcommands) {
+                $metas{''} = $res->[2];
+                $sc_mods{''} = $res->[3]{'func.module'};
+                $func_names{''} = $res->[3]{'func.func_name'};
+            }
+        }
+
+        if (!$url && !$has_subcommands) {
+            $metas{''} = $args{meta};
             $func_names{''} = $args{sub_name};
             $script_name //= do {
                 local $_ = $args{sub_name};
@@ -331,13 +358,10 @@ sub gen_inline_pericmd_script {
 
         last if $args{meta_is_normalized};
         require Perinci::Sub::Normalize;
-        $meta = Perinci::Sub::Normalize::normalize_function_metadata($meta);
+        for (keys %metas) {
+            $metas{$_} = Perinci::Sub::Normalize::normalize_function_metadata($metas{$_});
+        }
     } # GET_META
-
-    my $args_as = $meta->{args_as} // 'hash';
-    if ($args_as !~ /\A(hashref|hash)\z/) {
-        return [501, "args_as=$args_as currently unsupported"];
-    }
 
     my $cd = {
         req_modules => {},
@@ -355,8 +379,6 @@ sub gen_inline_pericmd_script {
         # _pci_gen_iter
         "Data::Sah::Util::Type",
 
-        "Getopt::Long::EvenLess",
-
         # this will be removed if we don't need formatting
         "Perinci::Result::Format::Lite",
 
@@ -373,7 +395,7 @@ sub gen_inline_pericmd_script {
         no strict 'refs';
 
         my $skip_format = $args{skip_format} ||
-            $meta->{'cmdline.skip_format'};
+            (all { $metas{$_}{'cmdline.skip_format'} } keys %metas);
 
         my @l;
 
@@ -474,82 +496,93 @@ _
         }
 
         require Perinci::Sub::GetArgs::Argv;
-        my $ggl_res = Perinci::Sub::GetArgs::Argv::gen_getopt_long_spec_from_meta(
-            meta => $meta,
-            meta_is_normalized => 1,
-            per_arg_json => 1,
-            common_opts => \%copts,
-        );
-        return [500, "Can't generate Getopt::Long spec from meta: ".
-                    "$ggl_res->[0] - $ggl_res->[1]"]
-            unless $ggl_res->[0] == 200;
-
-        # gen function to check arguments
-        {
-            my @l2;
-            push @l2, '    my $args = shift;', "\n";
-            my $args_prop = $meta->{args} // {};
-
-            push @l2, "  FILL_FROM_POS: {\n";
-            push @l2, "        1;\n";
-            for my $arg (sort {
-                ($args_prop->{$b}{pos} // 9999) <=>
-                    ($args_prop->{$a}{pos} // 9999)
-                } keys %$args_prop) {
-                my $arg_spec = $args_prop->{$arg};
-                my $arg_opts = $ggl_res->[3]{'func.opts_by_arg'}{$arg};
-                next unless defined $arg_spec->{pos};
-                push @l2, '        if (@ARGV > '.$arg_spec->{pos}.') {';
-                push @l2, ' if (exists $args->{"'.$arg.'"}) {';
-                push @l2, ' return [400, "You specified '.$arg_opts->[0].' but also argument #'.$arg_spec->{pos}.'"];';
-                push @l2, " } else {";
-                if ($arg_spec->{greedy}) {
-                    push @l2, ' $args->{"'.$arg.'"} = [splice(@ARGV, '.$arg_spec->{pos}.')];';
-                } else {
-                    push @l2, ' $args->{"'.$arg.'"} = delete($ARGV['.$arg_spec->{pos}.']);';
-                }
-                push @l2, " }";
-                push @l2, " }\n";
+        my %ggl_res; # key = subcommand name
+        my %args_as; # key = subcommand name
+        for my $sc_name (keys %metas) {
+            my $meta = $metas{$sc_name};
+            my $args_as = $meta->{args_as} // 'hash';
+            if ($args_as !~ /\A(hashref|hash)\z/) {
+                return [501, "args_as=$args_as currently unsupported at subcommand='$sc_name'"];
             }
-            push @l2, "    }\n";
-            push @l2, '    my @check_argv = @ARGV;', "\n";
+            $args_as{$sc_name} = $args_as;
 
-            push @l2, '    # fill from cmdline_src', "\n";
+            my $ggl_res = Perinci::Sub::GetArgs::Argv::gen_getopt_long_spec_from_meta(
+                meta => $meta,
+                meta_is_normalized => 1,
+                per_arg_json => 1,
+                common_opts => \%copts,
+            );
+            return [500, "Can't generate Getopt::Long spec from meta (subcommand='$sc_name'): ".
+                        "$ggl_res->[0] - $ggl_res->[1]"]
+            unless $ggl_res->[0] == 200;
+            $ggl_res{$sc_name} = $ggl_res;
+
+            # gen function to check arguments
             {
-                my $stdin_seen;
-                my $req_gen_iter;
+                my @l2;
+                push @l2, '    my $args = shift;', "\n";
+                my $args_prop = $meta->{args} // {};
+
+                push @l2, "  FILL_FROM_POS: {\n";
+                push @l2, "        1;\n";
                 for my $arg (sort {
-                    my $asa = $args_prop->{$a};
-                    my $asb = $args_prop->{$b};
-                    my $csa = $asa->{cmdline_src} // '';
-                    my $csb = $asb->{cmdline_src} // '';
-                    # stdin_line is processed before stdin
-                    ($csa eq 'stdin_line' ? 1:2) <=>
-                        ($csa eq 'stdin_line' ? 1:2)
-                        ||
-                        ($asa->{pos} // 9999) <=> ($asb->{pos} // 9999)
+                    ($args_prop->{$b}{pos} // 9999) <=>
+                        ($args_prop->{$a}{pos} // 9999)
                     } keys %$args_prop) {
                     my $arg_spec = $args_prop->{$arg};
-                    my $cs = $arg_spec->{cmdline_src};
-                    my $sch = $arg_spec->{schema} // '';
-                    $sch = $sch->[1]{of} if $arg_spec->{stream} && $sch->[0] eq 'array';
-                    my $type = Data::Sah::Util::Type::get_type($sch);
-                    next unless $cs;
-                    if ($cs eq 'stdin_line') {
-                        # XXX support stdin_line, cmdline_prompt, is_password (for disabling echo)
-                        return [501, "cmdline_src=stdin_line is not yet supported"];
-                    } elsif ($cs eq 'stdin_or_file') {
-                        return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
-                            if defined $stdin_seen;
-                        $stdin_seen = $arg;
-                        # XXX support - to mean stdin
-                        push @l2, ' { my $fh;';
-                        push @l2, ' if (exists $args->{"'.$arg.'"}) {';
-                        push @l2, ' open $fh, "<", $args->{"'.$arg.'"} or _pci_err([500,"Cannot open file \'".$args->{"'.$arg.'"}."\': $!"]);';
-                        push @l2, ' } else { $fh = \*STDIN }';
-                        if ($arg_spec->{stream}) {
-                            $req_gen_iter++;
-                            push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
+                    my $arg_opts = $ggl_res->[3]{'func.opts_by_arg'}{$arg};
+                    next unless defined $arg_spec->{pos};
+                    push @l2, '        if (@ARGV > '.$arg_spec->{pos}.') {';
+                    push @l2, ' if (exists $args->{"'.$arg.'"}) {';
+                    push @l2, ' return [400, "You specified '.$arg_opts->[0].' but also argument #'.$arg_spec->{pos}.'"];';
+                    push @l2, " } else {";
+                    if ($arg_spec->{greedy}) {
+                        push @l2, ' $args->{"'.$arg.'"} = [splice(@ARGV, '.$arg_spec->{pos}.')];';
+                    } else {
+                        push @l2, ' $args->{"'.$arg.'"} = delete($ARGV['.$arg_spec->{pos}.']);';
+                    }
+                    push @l2, " }";
+                    push @l2, " }\n";
+                }
+                push @l2, "    }\n";
+                push @l2, '    my @check_argv = @ARGV;', "\n";
+
+                push @l2, '    # fill from cmdline_src', "\n";
+                {
+                    my $stdin_seen;
+                    my $req_gen_iter;
+                    for my $arg (sort {
+                        my $asa = $args_prop->{$a};
+                        my $asb = $args_prop->{$b};
+                        my $csa = $asa->{cmdline_src} // '';
+                        my $csb = $asb->{cmdline_src} // '';
+                        # stdin_line is processed before stdin
+                        ($csa eq 'stdin_line' ? 1:2) <=>
+                            ($csa eq 'stdin_line' ? 1:2)
+                                ||
+                                    ($asa->{pos} // 9999) <=> ($asb->{pos} // 9999)
+                                } keys %$args_prop) {
+                        my $arg_spec = $args_prop->{$arg};
+                        my $cs = $arg_spec->{cmdline_src};
+                        my $sch = $arg_spec->{schema} // '';
+                        $sch = $sch->[1]{of} if $arg_spec->{stream} && $sch->[0] eq 'array';
+                        my $type = Data::Sah::Util::Type::get_type($sch);
+                        next unless $cs;
+                        if ($cs eq 'stdin_line') {
+                            # XXX support stdin_line, cmdline_prompt, is_password (for disabling echo)
+                            return [501, "cmdline_src=stdin_line is not yet supported"];
+                        } elsif ($cs eq 'stdin_or_file') {
+                            return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
+                                if defined $stdin_seen;
+                            $stdin_seen = $arg;
+                            # XXX support - to mean stdin
+                            push @l2, ' { my $fh;';
+                            push @l2, ' if (exists $args->{"'.$arg.'"}) {';
+                            push @l2, ' open $fh, "<", $args->{"'.$arg.'"} or _pci_err([500,"Cannot open file \'".$args->{"'.$arg.'"}."\': $!"]);';
+                            push @l2, ' } else { $fh = \*STDIN }';
+                            if ($arg_spec->{stream}) {
+                                $req_gen_iter++;
+                                push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
                         } elsif ($type eq 'array') {
                             push @l2, ' $args->{"'.$arg.'"} = do { local $/; [<$fh>] }';
                         } else {
@@ -718,59 +751,65 @@ _
         $cd->{vars}{'%_pci_args'} = undef;
         push @l, "### parse cmdline options\n\n";
         push @l, "{\n";
-        push @l, "require Getopt::Long::EvenLess;\n";
-        push @l, 'my %mentioned_args;', "\n";
-        {
-            push @l, 'my $go_spec = {', "\n";
-            for my $go_spec (sort keys %{ $ggl_res->[2] }) {
-                my $specmeta = $ggl_res->[3]{'func.specmeta'}{$go_spec};
-                push @l, "    '$go_spec' => sub {\n";
-                if ($specmeta->{common_opt}) {
-                    if ($specmeta->{common_opt} eq 'help') {
-                        require Perinci::CmdLine::Help;
-                        my $res = Perinci::CmdLine::Help::gen_help(
-                            meta => $meta,
-                            common_opts => \%copts,
-                            program_name => $script_name,
-                        );
-                        return [500, "Can't generate help: $res->[0] - $res->[1]"]
-                            unless $res->[0] == 200;
-                        push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
-                    } elsif ($specmeta->{common_opt} eq 'version') {
-                        no strict 'refs';
-                        my $mod = $sc_mods{''};
-                        push @l, "        no warnings 'once';\n";
-                        push @l, "        require $mod;\n" if $mod;
-                        push @l, '        print "', $script_name , ' version ", ',
-                            (defined($args{script_version}) ? "\"$args{script_version}\"" :
-                             "(\$$mod\::VERSION // '?')"),
-                             ", (\$$mod\::DATE ? \" (\$$mod\::DATE)\" : '')",
-                             ', "\\n";', "\n";
-                        push @l, '        print "  Generated by ', __PACKAGE__ , ' version ',
-                            (${__PACKAGE__."::VERSION"} // 'dev'),
-                            (${__PACKAGE__."::DATE"} ? " (".${__PACKAGE__."::DATE"}.")" : ""),
-                            '\n";', "\n";
-                        push @l, '        exit 0;', "\n";
-                    } elsif ($specmeta->{common_opt} eq 'format') {
-                        push @l, '        $_pci_r->{format} = $_[1];', "\n";
-                    } elsif ($specmeta->{common_opt} eq 'json') {
-                        push @l, '        $_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json";', "\n";
-                    } elsif ($specmeta->{common_opt} eq 'naked_res') {
-                        push @l, '        $_pci_r->{naked_res} = 1;', "\n";
-                    } elsif ($specmeta->{common_opt} eq 'no_naked_res') {
-                        push @l, '        $_pci_r->{naked_res} = 0;', "\n";
-                    } else {
-                        die "BUG: Unrecognized common_opt '$specmeta->{common_opt}'";
-                    }
-                } else {
-                    my $arg_spec = $meta->{args}{$specmeta->{arg}};
-                    push @l, '        ';
-                    if ($specmeta->{is_alias} && $specmeta->{is_code}) {
-                        my $alias_spec = $arg_spec->{cmdline_aliases}{$specmeta->{alias}};
-                        if ($specmeta->{is_code}) {
-                            push @l, 'my $code = ', dmp($alias_spec->{code}), '; ';
-                            push @l, '$code->(\%_pci_args);';
+
+        if ($args{subcommands}) {
+
+        } else {
+            _gen_parse($cd, $go_spec);
+            _add_module($cd, "Getopt::Long::EvenLess");
+            push @l, "require Getopt::Long::EvenLess;\n";
+            push @l, 'my %mentioned_args;', "\n";
+            {
+                push @l, 'my $go_spec = {', "\n";
+                for my $go_spec (sort keys %{ $ggl_res->[2] }) {
+                    my $specmeta = $ggl_res->[3]{'func.specmeta'}{$go_spec};
+                    push @l, "    '$go_spec' => sub {\n";
+                    if ($specmeta->{common_opt}) {
+                        if ($specmeta->{common_opt} eq 'help') {
+                            require Perinci::CmdLine::Help;
+                            my $res = Perinci::CmdLine::Help::gen_help(
+                                meta => $meta,
+                                common_opts => \%copts,
+                                program_name => $script_name,
+                            );
+                            return [500, "Can't generate help: $res->[0] - $res->[1]"]
+                                unless $res->[0] == 200;
+                            push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
+                        } elsif ($specmeta->{common_opt} eq 'version') {
+                            no strict 'refs';
+                            my $mod = $sc_mods{''};
+                            push @l, "        no warnings 'once';\n";
+                            push @l, "        require $mod;\n" if $mod;
+                            push @l, '        print "', $script_name , ' version ", ',
+                                (defined($args{script_version}) ? "\"$args{script_version}\"" :
+                                     "(\$$mod\::VERSION // '?')"),
+                                         ", (\$$mod\::DATE ? \" (\$$mod\::DATE)\" : '')",
+                                             ', "\\n";', "\n";
+                            push @l, '        print "  Generated by ', __PACKAGE__ , ' version ',
+                                (${__PACKAGE__."::VERSION"} // 'dev'),
+                                    (${__PACKAGE__."::DATE"} ? " (".${__PACKAGE__."::DATE"}.")" : ""),
+                                        '\n";', "\n";
+                            push @l, '        exit 0;', "\n";
+                        } elsif ($specmeta->{common_opt} eq 'format') {
+                            push @l, '        $_pci_r->{format} = $_[1];', "\n";
+                        } elsif ($specmeta->{common_opt} eq 'json') {
+                            push @l, '        $_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json";', "\n";
+                        } elsif ($specmeta->{common_opt} eq 'naked_res') {
+                            push @l, '        $_pci_r->{naked_res} = 1;', "\n";
+                        } elsif ($specmeta->{common_opt} eq 'no_naked_res') {
+                            push @l, '        $_pci_r->{naked_res} = 0;', "\n";
                         } else {
+                            die "BUG: Unrecognized common_opt '$specmeta->{common_opt}'";
+                        }
+                    } else {
+                        my $arg_spec = $meta->{args}{$specmeta->{arg}};
+                        push @l, '        ';
+                        if ($specmeta->{is_alias} && $specmeta->{is_code}) {
+                            my $alias_spec = $arg_spec->{cmdline_aliases}{$specmeta->{alias}};
+                            if ($specmeta->{is_code}) {
+                                push @l, 'my $code = ', dmp($alias_spec->{code}), '; ';
+                                push @l, '$code->(\%_pci_args);';
+                            } else {
                             push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
                         }
                     } else {
