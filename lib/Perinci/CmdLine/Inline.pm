@@ -36,6 +36,36 @@ sub _add_module {
     $cd->{module_srcs}{$mod} = <$fh>;
 }
 
+sub _get_meta_from_url {
+    no strict 'refs';
+
+    my $url = shift;
+
+    $url =~ m!\A(?:pl:)?((?:/[^/]+)+)/([^/]+)\z!
+        or return [412, "URL scheme not supported, only local Perl ".
+                       "URL currently supported"];
+    my ($mod_pm, $short_func_name) = ($1, $2);
+    $mod_pm =~ s!\A/!!;
+    (my $mod = $mod_pm) =~ s!/!::!g;
+    $mod_pm .= ".pm";
+    require $mod_pm;
+    my $meta = ${"$mod\::SPEC"}{$short_func_name}
+        or return [412, "Can't find meta for URL '$url'"];
+    defined &{"$mod\::$short_func_name"}
+        or return [412, "Can't find function for URL '$url'"];
+    my $script_name //= do {
+        local $_ = $short_func_name;
+        s/_/-/g;
+        $_;
+    };
+    return [200, "OK", $meta, {
+        'func.module' => $mod,
+        'func.module_version' => ${"$mod\::VERSION"},
+        'func.func_name' => "$mod\::$short_func_name",
+    }];
+
+}
+
 # keep synchronize with Perinci::CmdLine::Base
 my %pericmd_attrs = (
 
@@ -44,14 +74,14 @@ my %pericmd_attrs = (
         $_ => {
             schema => 'any*',
         },
-    )} qw/actions common_opts completion default_subcommand get_subcommand_from_arg
+    )} qw/actions common_opts completion
           description exit formats
           riap_client riap_version riap_client_args
           log
-          subcommands
           tags
           read_env env_name
           read_config config_dirs config_filename
+          get_subcommand_from_arg
          /),
 
     pass_cmdline_object => {
@@ -132,9 +162,11 @@ _
     args_rels => {
         'dep_any&' => [
             [meta_is_normalized => ['meta']],
+            [default_subcommand => ['subcommands']],
         ],
         'req_one&' => [
             [qw/url meta/],
+            [qw/meta subcommands/],
         ],
         'choose_all&' => [
             [qw/meta sub_name/],
@@ -159,6 +191,15 @@ _
             tags => ['category:input'],
         },
         sub_name => {
+            schema => 'str*',
+            tags => ['category:input'],
+        },
+
+        subcommands => {
+            schema => 'hash*', of=>'hash*',
+            tags => ['category:input'],
+        },
+        default_subcommand => {
             schema => 'str*',
             tags => ['category:input'],
         },
@@ -257,34 +298,24 @@ sub gen_inline_pericmd_script {
     my $script_name = $args{script_name};
 
     my $meta;
-    my $mod;
-    my $func_name;
+    my %mods; # key=module name, value={version=>..., ...}
+    my %sc_mods; # key=subcommand name, value=module name
+    my %func_names; # key=subcommand name, value=qualified function name
   GET_META:
     {
-        no strict 'refs';
         my $url = $args{url};
         if ($url) {
-            $url =~ m!\A(?:pl:)?((?:/[^/]+)+)/([^/]+)\z!
-                or return [412, "URL scheme not supported, only local Perl ".
-                           "URL currently supported"];
-            my ($mod_pm, $short_func_name) = ($1, $2);
-            $mod_pm =~ s!\A/!!;
-            ($mod = $mod_pm) =~ s!/!::!g;
-            $mod_pm .= ".pm";
-            require $mod_pm;
-            $meta = ${"$mod\::SPEC"}{$short_func_name}
-                or return [412, "Can't find meta for URL '$url'"];
-            defined &{"$mod\::$short_func_name"}
-                or return [412, "Can't find function for URL '$url'"];
-            $script_name //= do {
-                local $_ = $short_func_name;
-                s/_/-/g;
-                $_;
+            my $res = _get_meta_from_url($url);
+            return $res if $res->[0] != 200;
+            $meta = $res->[2];
+            $mods{ $res->[3]{'func.module'} } = {
+                version => $res->[3]{'func.module_version'},
             };
-            $func_name = "$mod\::$short_func_name";
+            $sc_mods{''} = $res->[3]{'func.module'};
+            $func_names{''} = $res->[3]{'func.func_name'};
         } else {
             $meta = $args{meta};
-            $func_name = $args{sub_name};
+            $func_names{''} = $args{sub_name};
             $script_name //= do {
                 local $_ = $args{sub_name};
                 s/_/-/g;
@@ -639,7 +670,7 @@ _
                                 _add_module($cd, $mod_rec->{name});
                             }
                             my $mod_is_core = Module::CoreList::More->is_still_core($mod_rec->{name});
-                            $log->warnf("Validation code requires non-core module '%s'", $mod)
+                            $log->warnf("Validation code requires non-core module '%s'", $mod_rec->{name})
                                 unless $mod_is_core && !$cd->{module_srcs}{$mod_rec->{name}} &&
                                 !($args{allow_prereq} && grep { $_ eq $mod_rec->{name} } @{$args{allow_prereq}});
                             # skip modules that we already require at the
@@ -707,6 +738,7 @@ _
                         push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
                     } elsif ($specmeta->{common_opt} eq 'version') {
                         no strict 'refs';
+                        my $mod = $sc_mods{''};
                         push @l, "        no warnings 'once';\n";
                         push @l, "        require $mod;\n" if $mod;
                         push @l, '        print "', $script_name , ' version ", ',
@@ -770,10 +802,10 @@ _
         # generate code to call function
         push @l, "### call function\n\n";
         push @l, "{\n";
-        push @l, "require $mod;\n" if $mod;
+        push @l, "require $sc_mods{''};\n" if $sc_mods{''};
         push @l, '$_pci_args{-cmdline} = Perinci::CmdLine::Inline::Object->new(@{', dmp([%args]), '});', "\n"
             if $args{pass_cmdline_object};
-        push @l, 'eval { $_pci_r->{res} = ', $func_name, ($args_as eq 'hashref' ? '(\\%_pci_args)' : '(%_pci_args)'), ' };', "\n";
+        push @l, 'eval { $_pci_r->{res} = ', $func_names{''}, ($args_as eq 'hashref' ? '(\\%_pci_args)' : '(%_pci_args)'), ' };', "\n";
         push @l, 'if ($@) { $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
         if ($meta->{result_naked}) {
             push @l, '$_pci_r->{res} = [200, "OK (envelope added by Perinci::CmdLine::Inline)", $_pci_r->{res}];', "\n";
@@ -875,7 +907,10 @@ _
 
             "# This script is generated by ", __PACKAGE__,
             " version ", (${__PACKAGE__."::VERSION"} // 'dev'), " on ",
-            scalar(localtime), ".\n",
+            scalar(localtime), ".\n\n",
+
+            (keys %mods ? "# Rinci metadata taken from these modules: ".join(", ", map {"$_ ".$mods{$_}{version}} sort keys %mods)."\n\n" : ""),
+
             "# You probably should not manually edit this file.\n\n",
 
             # for dzil
