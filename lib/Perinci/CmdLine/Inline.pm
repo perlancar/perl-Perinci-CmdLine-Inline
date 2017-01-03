@@ -301,6 +301,11 @@ sub gen_inline_pericmd_script {
         last if $args{meta_is_normalized};
         require Perinci::Sub::Normalize;
         $meta = Perinci::Sub::Normalize::normalize_function_metadata($meta);
+    } # GET_META
+
+    my $args_as = $meta->{args_as} // 'hash';
+    if ($args_as !~ /\A(hashref|hash)\z/) {
+        return [501, "args_as=$args_as currently unsupported"];
     }
 
     my $cd = {
@@ -768,7 +773,7 @@ _
         push @l, "require $mod;\n" if $mod;
         push @l, '$_pci_args{-cmdline} = Perinci::CmdLine::Inline::Object->new(@{', dmp([%args]), '});', "\n"
             if $args{pass_cmdline_object};
-        push @l, 'eval { $_pci_r->{res} = ', $func_name, '(%_pci_args) };', "\n";
+        push @l, 'eval { $_pci_r->{res} = ', $func_name, ($args_as eq 'hashref' ? '(\\%_pci_args)' : '(%_pci_args)'), ' };', "\n";
         push @l, 'if ($@) { $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
         if ($meta->{result_naked}) {
             push @l, '$_pci_r->{res} = [200, "OK (envelope added by Perinci::CmdLine::Inline)", $_pci_r->{res}];', "\n";
