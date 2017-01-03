@@ -210,8 +210,25 @@ _
             description => <<'_',
 
 By default, Perinci::CmdLine::Inline will strive to make the script freestanding
-and require core modules. A dependency to a non-core module will cause failure.
-However, you can pass a list of modules that is allowed here.
+and require core modules. A dependency to a non-core module will cause failure
+(unless `pack_deps` option is set to false). However, you can pass a list of
+modules that is allowed here.
+
+_
+        },
+
+        pack_deps => {
+            summary => 'Whether to pack dependencies into the script',
+            schema => ['bool*', is=>1],
+            default => 1,
+            description => <<'_',
+
+By default, Perinci::CmdLine::Inline will use datapacking technique (i.e. embed
+dependencies into DATA section and load it on-demand using require() hook) to
+make the script freestanding. However, in some situation this is unwanted, e.g.
+when we want to produce a script that can be packaged as a Debian package
+(Debian policy forbids embedding convenience copy of code,
+https://www.debian.org/doc/debian-policy/ch-source.html#s-embeddedfiles ).
 
 _
         },
@@ -236,6 +253,7 @@ sub gen_inline_pericmd_script {
 
     my $validate_args = $args{validate_args} // 1;
     #my $validate_result = $args{validate_result} // 1;
+    my $pack_deps = $args{pack_deps} // 1;
     my $script_name = $args{script_name};
 
     my $meta;
@@ -736,7 +754,8 @@ _
             push @l, 'my $res = Getopt::Long::EvenLess::GetOptions(%$go_spec);', "\n";
             push @l, '_pci_debug("args after GetOptions: ", \%_pci_args);', "\n" if $args{with_debug};
             push @l, '_pci_err([500, "GetOptions failed"]) unless $res;', "\n";
-            push @l, 'require Local::_pci_check_args; $res = _pci_check_args(\\%_pci_args);', "\n";
+            push @l, 'require Local::_pci_check_args; ' if $pack_deps;
+            push @l, '$res = _pci_check_args(\\%_pci_args);', "\n";
             push @l, '_pci_debug("args after _pci_check_args: ", \%_pci_args);', "\n" if $args{with_debug};
             push @l, '_pci_err($res) if $res->[0] != 200;', "\n";
             push @l, '$_pci_r->{args} = \\%_pci_args;', "\n";
@@ -766,7 +785,9 @@ _
         push @l, 'my $is_stream = $_pci_r->{res}[3]{stream} // ' . ($meta->{result}{stream} ? 1:'undef'), " // 0;\n";
         push @l, 'if ($is_success && (', ($skip_format ? 1:0), ' || $_pci_r->{res}[3]{"cmdline.skip_format"})) { $fres = $_pci_r->{res}[2] }', "\n";
         push @l, 'elsif ($is_success && $is_stream) {}', "\n";
-        push @l, 'else { require Local::_pci_clean_json; require Perinci::Result::Format::Lite; $is_stream=0; _pci_clean_json($_pci_r->{res}); $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
+        push @l, 'else { ';
+        push @l, 'require Local::_pci_clean_json; ' if $pack_deps;
+        push @l, 'require Perinci::Result::Format::Lite; $is_stream=0; _pci_clean_json($_pci_r->{res}); $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
         push @l, "\n";
 
         push @l, 'my $use_utf8 = $_pci_r->{res}[3]{"x.hint.result_binary"} ? 0 : '.($args{use_utf8} ? 1:0).";\n";
@@ -807,14 +828,28 @@ _
                 );
         }
 
-        require Module::DataPack;
-        my $dp_res = Module::DataPack::datapack_modules(
-            module_srcs => $cd->{module_srcs},
-            stripper    => 1,
-        );
-        return [500, "Can't datapack: $dp_res->[0] - $dp_res->[1]"]
-            unless $dp_res->[0] == 200;
-        my ($dp_code1, $dp_code2) = $dp_res->[2] =~ /(.+?)^(__DATA__\n.+)/sm;
+        my ($dp_code1, $dp_code2);
+        if ($pack_deps) {
+            require Module::DataPack;
+            my $dp_res = Module::DataPack::datapack_modules(
+                module_srcs => $cd->{module_srcs},
+                stripper    => 1,
+            );
+            return [500, "Can't datapack: $dp_res->[0] - $dp_res->[1]"]
+                unless $dp_res->[0] == 200;
+            ($dp_code1, $dp_code2) = $dp_res->[2] =~ /(.+?)^(__DATA__\n.+)/sm;
+        } else {
+            # remove all modules except Local::*
+            for (keys %{ $cd->{module_srcs} }) {
+                delete $cd->{module_srcs}{$_} unless /\ALocal::/;
+            }
+            $dp_code1 = "";
+            $dp_code2 = "";
+            for my $pkg (sort keys %{ $cd->{module_srcs} }) {
+                my $src = $cd->{module_srcs}{$pkg};
+                $dp_code2 .= "# BEGIN $pkg\n$src\n# END $pkg\n\n";
+            }
+        }
 
         # generate final result
         $cd->{result} = join(
