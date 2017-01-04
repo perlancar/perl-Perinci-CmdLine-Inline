@@ -9,7 +9,6 @@ use warnings;
 use Log::Any::IfLOG qw($log);
 
 use Data::Dmp;
-use List::Util qw(all);
 use Module::CoreList::More;
 use Module::Path::More qw(module_path);
 
@@ -28,6 +27,7 @@ sub _dsah_plc {
 
 sub _add_module {
     my ($cd, $mod) = @_;
+    return unless $cd->{gen_args}{pack_deps};
     return if $cd->{module_srcs}{$mod};
     $log->infof("Adding source code of module %s ...", $mod);
     $log->warnf("%s is a core module", $mod) if Module::CoreList::More->is_still_core($mod);
@@ -56,20 +56,389 @@ sub _get_meta_from_url {
         defined &{"$mod\::$short_func_name"}
             or return [412, "Can't find function '$short_func_name' for URL '$url'"];
     }
-    my $script_name //= do {
-        local $_ = $short_func_name;
-        s/_/-/g;
-        $_;
-    };
     return [200, "OK", $meta, {
         'func.module' => $mod,
         'func.module_version' => ${"$mod\::VERSION"},
+        'func.short_func_name' => $short_func_name,
         'func.func_name' => "$mod\::$short_func_name",
     }];
 }
 
-sub _gen_parse_opts {
+sub _gen_pci_check_args {
+    my ($cd) = @_;
 
+    my @l2;
+    push @l2, '    my ($args) = @_;', "\n";
+    push @l2, '    my $sc_name = $_pci_r->{subcommand_name};', "\n";
+    my $i = -1;
+    for my $sc_name (sort keys %{$cd->{metas}}) {
+        $i++;
+        my $meta = $cd->{metas}{$sc_name};
+        my $args_prop = $meta->{args} // {};
+        push @l2, '    '.($i ? "elsif":"if").' ($sc_name eq '.dmp($sc_name).") {\n";
+        push @l2, "      FILL_FROM_POS: {\n";
+        push @l2, "            1;\n"; # to avoid syntax error when there is 0 args
+        for my $arg (sort {
+            ($args_prop->{$b}{pos} // 9999) <=>
+                ($args_prop->{$a}{pos} // 9999)
+            } keys %$args_prop) {
+            my $arg_spec = $args_prop->{$arg};
+            my $arg_opts = $cd->{ggl_res}{$sc_name}[3]{'func.opts_by_arg'}{$arg};
+            next unless defined $arg_spec->{pos};
+            push @l2, '            if (@ARGV > '.$arg_spec->{pos}.') {';
+            push @l2, ' if (exists $args->{"'.$arg.'"}) {';
+            push @l2, ' return [400, "You specified '.$arg_opts->[0].' but also argument #'.$arg_spec->{pos}.'"];';
+            push @l2, " } else {";
+            if ($arg_spec->{greedy}) {
+                push @l2, ' $args->{"'.$arg.'"} = [splice(@ARGV, '.$arg_spec->{pos}.')];';
+            } else {
+                push @l2, ' $args->{"'.$arg.'"} = delete($ARGV['.$arg_spec->{pos}.']);';
+            }
+            push @l2, " }";
+            push @l2, " }\n";
+        }
+        push @l2, "        }\n";
+        push @l2, '        my @check_argv = @ARGV;', "\n";
+
+        push @l2, '        # fill from cmdline_src', "\n";
+        {
+            my $stdin_seen;
+            my $req_gen_iter;
+            for my $arg (sort {
+                my $asa = $args_prop->{$a};
+                my $asb = $args_prop->{$b};
+                my $csa = $asa->{cmdline_src} // '';
+                my $csb = $asb->{cmdline_src} // '';
+                # stdin_line is processed before stdin
+                ($csa eq 'stdin_line' ? 1:2) <=>
+                    ($csa eq 'stdin_line' ? 1:2)
+                    ||
+                    ($asa->{pos} // 9999) <=> ($asb->{pos} // 9999)
+                } keys %$args_prop) {
+                my $arg_spec = $args_prop->{$arg};
+                my $cs = $arg_spec->{cmdline_src};
+                my $sch = $arg_spec->{schema} // '';
+                $sch = $sch->[1]{of} if $arg_spec->{stream} && $sch->[0] eq 'array';
+                my $type = Data::Sah::Util::Type::get_type($sch);
+                next unless $cs;
+                if ($cs eq 'stdin_line') {
+                    # XXX support stdin_line, cmdline_prompt, is_password (for disabling echo)
+                    return [501, "cmdline_src=stdin_line is not yet supported"];
+                } elsif ($cs eq 'stdin_or_file') {
+                    return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
+                        if defined $stdin_seen;
+                    $stdin_seen = $arg;
+                    # XXX support - to mean stdin
+                    push @l2, '        { my $fh;';
+                    push @l2, ' if (exists $args->{"'.$arg.'"}) {';
+                    push @l2, ' open $fh, "<", $args->{"'.$arg.'"} or _pci_err([500,"Cannot open file \'".$args->{"'.$arg.'"}."\': $!"]);';
+                    push @l2, ' } else { $fh = \*STDIN }';
+                    if ($arg_spec->{stream}) {
+                        $req_gen_iter++;
+                        push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
+                    } elsif ($type eq 'array') {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; [<$fh>] }';
+                    } else {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<$fh> }';
+                    }
+                    push @l2, " }\n";
+                } elsif ($cs eq 'file') {
+                    # XXX support - to mean stdin
+                    push @l2, '        if (!(exists $args->{"'.$arg.'"}) && '.($arg_spec->{req} ? 1:0).') { _pci_err([500,"Please specify filename for argument \''.$arg.'\'"]) }';
+                    push @l2, ' if (exists $args->{"'.$arg.'"}) {';
+                    push @l2, ' open my($fh), "<", $args->{"'.$arg.'"} or _pci_err([500,"Cannot open file \'".$_pci_args{"'.$arg.'"}."\': $!"]);';
+                    if ($arg_spec->{stream}) {
+                        $req_gen_iter++;
+                        push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
+                    } elsif ($type eq 'array') {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; [<$fh>] }';
+                    } else {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<$fh> }';
+                    }
+                    push @l2, " }\n";
+                } elsif ($cs eq 'stdin') {
+                    return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
+                        if defined $stdin_seen;
+                    $stdin_seen = $arg;
+                    push @l2, '        unless (exists $args->{"'.$arg.'"}) {';
+                    if ($arg_spec->{stream}) {
+                        $req_gen_iter++;
+                        push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter(\*STDIN, "'.$type.'", "'.$arg.'")';
+                    } elsif ($type eq 'array') {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; [<STDIN>] }';
+                    } else {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<STDIN> }';
+                    }
+                    push @l2, " }\n";
+                } elsif ($cs eq 'stdin_or_files') {
+                    return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
+                        if defined $stdin_seen;
+                    $stdin_seen = $arg;
+                    push @l2, '        unless (exists $args->{"'.$arg.'"}) {';
+                    push @l2, ' @check_argv = ();';
+                    if ($arg_spec->{stream}) {
+                        $req_gen_iter++;
+                        push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter(\*ARGV, "'.$type.'", "'.$arg.'")';
+                    } elsif ($type eq 'array') {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; [<>] }';
+                    } else {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<> }';
+                    }
+                    push @l2, " }\n";
+                } elsif ($cs eq 'stdin_or_args') {
+                    return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
+                        if defined $stdin_seen;
+                    $stdin_seen = $arg;
+                    push @l2, '        unless (exists $args->{"'.$arg.'"}) {';
+                    push @l2, ' @check_argv = ();';
+                    if ($arg_spec->{stream}) {
+                        $req_gen_iter++;
+                        push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter(\*STDIN, "'.$type.'", "'.$arg.'")';
+                    } elsif ($type eq 'array') {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; [map {chomp;$_} <>] }';
+                    } else {
+                        push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<> }';
+                    }
+                    push @l2, " }\n";
+                } else {
+                    return [400, "arg $arg: unknown cmdline_src value '$cs'"];
+                }
+            }
+
+            unless ($req_gen_iter) {
+                delete $cd->{sub_srcs}{_pci_gen_iter};
+                delete $cd->{module_srcs}{'Data::Sah::Util::Type'};
+            }
+        } # fill from cmdline_src
+        push @l2, "\n";
+
+        push @l2, '        # fill defaults from "default" property and check against schema', "\n";
+      GEN_VALIDATION:
+        {
+            my $has_validation;
+            my @l3;
+            my @modules_for_all_args;
+            my @req_stmts;
+            for my $arg (sort keys %$args_prop) {
+                my $arg_spec = $args_prop->{$arg};
+
+                # we don't validate streaming input for now
+                next if $arg_spec->{stream};
+
+                my $arg_schema = $arg_spec->{schema};
+                my $arg_term = '$args->{"'.$arg.'"}';
+                if (defined $arg_spec->{default}) {
+                    push @l3, "        $arg_term //= ".dmp($arg_spec->{default}).";\n";
+                }
+                if ($arg_schema && $cd->{args}{validate_args}) {
+                    $has_validation++;
+                    my $dsah_cd = _dsah_plc->compile(
+                        schema => $arg_schema,
+                        schema_is_normalized => 1,
+                        indent_level => 3,
+
+                        data_term => $arg_term,
+                        err_term => '$_sahv_err',
+                        return_type => 'str',
+
+                        core_or_pp => 1,
+                        ( whitelist_modules => $cd->{gen_args}{allow_prereq} ) x !!$cd->{gen_args}{allow_prereq},
+                    );
+                    die "Incompatible Data::Sah version (cd v=$dsah_cd->{v}, expected 2)" unless $dsah_cd->{v} == 2;
+                    # add require statements for modules needed during
+                    # validation
+                    for my $mod_rec (@{$dsah_cd->{modules}}) {
+                        next unless $mod_rec->{phase} eq 'runtime';
+                        next if grep { ($mod_rec->{use_statement} && $_->{use_statement} && $_->{use_statement} eq $mod_rec->{use_statement}) ||
+                                           $_->{name} eq $mod_rec->{name} } @modules_for_all_args;
+                        push @modules_for_all_args, $mod_rec;
+                        if ($mod_rec->{name} =~ /\A(Scalar::Util::Numeric::PP)\z/) {
+                            _add_module($cd, $mod_rec->{name});
+                        }
+                        my $mod_is_core = Module::CoreList::More->is_still_core($mod_rec->{name});
+                        $log->warnf("Validation code requires non-core module '%s'", $mod_rec->{name})
+                            unless $mod_is_core && !$cd->{module_srcs}{$mod_rec->{name}} &&
+                            !($cd->{gen_args}{allow_prereq} && grep { $_ eq $mod_rec->{name} } @{$cd->{gen_args}{allow_prereq}});
+                        # skip modules that we already require at the
+                        # beginning of script
+                        next if exists $cd->{req_modules}{$mod_rec->{name}};
+                        push @req_stmts, _dsah_plc->stmt_require_module($mod_rec);
+                    }
+                    push @l3, "        if (exists $arg_term) {\n";
+                    push @l3, "            \$_sahv_dpath = [];\n";
+                    push @l3, $dsah_cd->{result}, "\n";
+                    push @l3, "             ; if (\$_sahv_err) { return [400, \"Argument validation failed: \$_sahv_err\"] }\n";
+                    push @l3, "        } # if date arg exists\n";
+                }
+            }
+            push @l3, "\n";
+
+            if ($has_validation) {
+                push @l2, map {"        $_\n"} @req_stmts;
+                push @l2, "        my \$_sahv_dpath;\n";
+                push @l2, "        my \$_sahv_err;\n";
+            }
+
+            push @l2, @l3;
+        } # GEN_VALIDATION
+
+        push @l2, '        # check required args', "\n";
+        for my $arg (sort keys %$args_prop) {
+            my $arg_spec = $args_prop->{$arg};
+            if ($arg_spec->{req}) {
+                push @l2, '        return [400, "Missing required argument: '.$arg.'"] unless exists $args->{"'.$arg.'"};', "\n";
+            }
+            if ($arg_spec->{schema}[1]{req}) {
+                push @l2, '        return [400, "Missing required value for argument: '.$arg.'"] if exists($args->{"'.$arg.'"}) && !defined($args->{"'.$arg.'"});', "\n";
+            }
+        }
+
+        push @l2, '        _pci_err([500, "Extraneous command-line argument(s): ".join(", ", @check_argv)]) if @check_argv;', "\n";
+        push @l2, '        [200];', "\n";
+        push @l2, '    }';
+    } # for subcommand
+    push @l2, "\n";
+    $cd->{module_srcs}{"Local::_pci_check_args"} = "sub _pci_check_args {\n".join('', @l2)."}\n1;\n";
+}
+
+sub _gen_parse_opts {
+    my ($cd) = @_;
+
+    my @l;
+    if ($cd->{gen_args}{subcommands}) {
+
+        # generate help message for all subcommands
+        require Perinci::CmdLine::Help;
+        my %helps; # key = subcommand name
+        for my $sc_name (sort keys %{ $cd->{metas} }) {
+            next if $sc_name eq '';
+            my $meta = $cd->{metas}{$sc_name};
+            my $res = Perinci::CmdLine::Help::gen_help(
+                meta => $meta,
+                common_opts => { map {$_ => $cd->{copts}{$_}} grep { $_ !~ /\A(subcommands|cmd)\z/ } keys %{$cd->{copts}} },
+                program_name => "$cd->{script_name} $sc_name",
+            );
+            return [500, "Can't generate help (subcommand='$sc_name'): $res->[0] - $res->[1]"]
+                unless $res->[0] == 200;
+            $helps{$sc_name} = $res->[2];
+        }
+        # generate help when there is no subcommand specified
+        my $res = Perinci::CmdLine::Help::gen_help(
+            meta => $cd->{metas}{''},
+            common_opts => $cd->{copts},
+            program_name => $cd->{script_name},
+        );
+        return [500, "Can't generate help (subcommand=''): $res->[0] - $res->[1]"]
+            unless $res->[0] == 200;
+        $helps{''} = $res->[2];
+
+        use DD; for (keys %helps) { print "$_\n\n$helps{$_}\n\n" }
+
+        _add_module($cd, "Getopt::Long::Subcommand");
+        # we don't add the Complete::* that Getopt::Long::Subcommand depends to
+        push @l, "require Getopt::Long::Subcommand;\n";
+        #push @l, "Getopt::Long::Subcommand::GetOptions(\n";
+        #push @l, "  options => {\n";
+        my @sc_names = sort keys %{ $cd->{metas} };
+        my $ggl_res = $cd->{ggl_res}{$sc_names[0]};
+        my $specmeta = $ggl_res->[3]{'func.specmeta'};
+        for my $o (sort keys %$specmeta) {
+            my $s = $specmeta->{$o};
+            next unless $s->{common_opt};
+            #push @l, "    '$o' => {\n";
+            #if ($scif (push @l, "      handler => ";
+        }
+
+        # common options
+
+        for my $sc_name (sort keys %{ $cd->{metas} }) {
+        }
+
+    } else {
+
+        _add_module($cd, "Getopt::Long::EvenLess");
+        push @l, "require Getopt::Long::EvenLess;\n";
+        push @l, 'my %mentioned_args;', "\n";
+        my $meta = $cd->{metas}{''};
+        push @l, 'my $go_spec = {', "\n";
+        for my $go_spec (sort keys %{ $cd->{ggl_res}{''}[2] }) {
+            my $specmeta = $cd->{ggl_res}{''}[3]{'func.specmeta'}{$go_spec};
+            push @l, "    '$go_spec' => sub {\n";
+            if ($specmeta->{common_opt}) {
+                if ($specmeta->{common_opt} eq 'help') {
+                    require Perinci::CmdLine::Help;
+                    my $res = Perinci::CmdLine::Help::gen_help(
+                        meta => $meta,
+                        common_opts => $cd->{copts},
+                        program_name => $cd->{script_name},
+                    );
+                    return [500, "Can't generate help: $res->[0] - $res->[1]"]
+                        unless $res->[0] == 200;
+                    push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
+                } elsif ($specmeta->{common_opt} eq 'version') {
+                    no strict 'refs';
+                    my $mod = $cd->{sc_mods}{''};
+                    push @l, "        no warnings 'once';\n";
+                    push @l, "        require $mod;\n" if $mod;
+                    push @l, '        print "', $cd->{script_name} , ' version ", ',
+                        (defined($cd->{gen_args}{script_version}) ? "\"$cd->{gen_args}{script_version}\"" :
+                         "(\$$mod\::VERSION // '?')"),
+                         ", (\$$mod\::DATE ? \" (\$$mod\::DATE)\" : '')",
+                         ', "\\n";', "\n";
+                    push @l, '        print "  Generated by ', __PACKAGE__ , ' version ',
+                        (${__PACKAGE__."::VERSION"} // 'dev'),
+                        (${__PACKAGE__."::DATE"} ? " (".${__PACKAGE__."::DATE"}.")" : ""),
+                        '\n";', "\n";
+                    push @l, '        exit 0;', "\n";
+                } elsif ($specmeta->{common_opt} eq 'format') {
+                    push @l, '        $_pci_r->{format} = $_[1];', "\n";
+                } elsif ($specmeta->{common_opt} eq 'json') {
+                    push @l, '        $_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json";', "\n";
+                } elsif ($specmeta->{common_opt} eq 'naked_res') {
+                    push @l, '        $_pci_r->{naked_res} = 1;', "\n";
+                } elsif ($specmeta->{common_opt} eq 'no_naked_res') {
+                    push @l, '        $_pci_r->{naked_res} = 0;', "\n";
+                } else {
+                    die "BUG: Unrecognized common_opt '$specmeta->{common_opt}'";
+                }
+            } else {
+                my $arg_spec = $meta->{args}{$specmeta->{arg}};
+                push @l, '        ';
+                if ($specmeta->{is_alias} && $specmeta->{is_code}) {
+                    my $alias_spec = $arg_spec->{cmdline_aliases}{$specmeta->{alias}};
+                    if ($specmeta->{is_code}) {
+                        push @l, 'my $code = ', dmp($alias_spec->{code}), '; ';
+                        push @l, '$code->(\%_pci_args);';
+                    } else {
+                        push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
+                    }
+                } else {
+                    if (($specmeta->{parsed}{type} // '') =~ /\@/) {
+                        push @l, 'if ($mentioned_args{\'', $specmeta->{arg}, '\'}++) { push @{ $_pci_args{\'', $specmeta->{arg}, '\'} }, $_[1] } else { $_pci_args{\'', $specmeta->{arg}, '\'} = [$_[1]] }';
+                    } elsif ($specmeta->{is_json}) {
+                        push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json()->decode($_[1]);';
+                        _add_module($cd, "JSON::Tiny::Subclassable");
+                    } else {
+                        push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
+                    }
+                }
+                push @l, "\n";
+            }
+            push @l, "    },\n";
+        }
+        push @l, "};\n";
+        push @l, 'my $res = Getopt::Long::EvenLess::GetOptions(%$go_spec);', "\n";
+        push @l, '_pci_debug("args after GetOptions: ", \%_pci_args);', "\n" if $cd->{gen_args}{with_debug};
+        push @l, '_pci_err([500, "GetOptions failed"]) unless $res;', "\n";
+        push @l, 'require Local::_pci_check_args; ' if $cd->{gen_args}{pack_deps};
+        push @l, '$res = _pci_check_args(\\%_pci_args);', "\n";
+        push @l, '_pci_debug("args after _pci_check_args: ", \%_pci_args);', "\n" if $cd->{gen_args}{with_debug};
+        push @l, '_pci_err($res) if $res->[0] != 200;', "\n";
+        push @l, '$_pci_r->{args} = \\%_pci_args;', "\n";
+
+    }
+
+    join "", @l;
 }
 
 # keep synchronize with Perinci::CmdLine::Base
@@ -298,21 +667,30 @@ sub gen_inline_pericmd_script {
 
     my %args = @_;
 
-    my $validate_args = $args{validate_args} // 1;
-    #my $validate_result = $args{validate_result} // 1;
-    my $pack_deps = $args{pack_deps} // 1;
-    my $script_name = $args{script_name};
+    # XXX schema
+    $args{validate_args} //= 1;
+    #$args{validate_result} //= 1;
+    $args{pack_deps} //= 1;
 
-    my $has_subcommands;
-    my %metas; # key=subcommand name, '' if no subcommands
-    my %mods; # key=module name, value={version=>..., ...}
-    my %sc_mods; # key=subcommand name, value=module name
-    my %func_names; # key=subcommand name, value=qualified function name
+    my $cd = {
+        gen_args => \%args,
+        script_name => $args{script_name},
+        req_modules => {},
+        vars => {},
+        subs => {},
+        module_srcs => {},
+    };
+
   GET_META:
     {
+        my %metas; # key=subcommand name, '' if no subcommands
+        my %mods; # key=module name, value={version=>..., ...}
+        my %sc_mods; # key=subcommand name, value=module name
+        my %func_names; # key=subcommand name, value=qualified function name
+        my $script_name = $args{script_name};
+
         my $scs = $args{subcommands};
         if ($scs) {
-            $has_subcommands++;
             for my $sc_name (keys %$scs) {
                 my $sc_spec = $scs->{$sc_name};
                 my $res = _get_meta_from_url($sc_spec->{url});
@@ -333,14 +711,21 @@ sub gen_inline_pericmd_script {
             $mods{ $res->[3]{'func.module'} } = {
                 version => $res->[3]{'func.module_version'},
             };
-            unless ($has_subcommands) {
+            unless ($scs) {
                 $metas{''} = $res->[2];
                 $sc_mods{''} = $res->[3]{'func.module'};
                 $func_names{''} = $res->[3]{'func.func_name'};
             }
+            if (length (my $sfn = $res->[3]{'func.short_func_name'})) {
+                $script_name //= do {
+                    local $_ = $sfn;
+                    s/_/-/g;
+                    $_;
+                };
+            }
         }
 
-        if (!$url && !$has_subcommands) {
+        if (!$url && !$scs) {
             $metas{''} = $args{meta};
             $func_names{''} = $args{sub_name};
             $script_name //= do {
@@ -361,14 +746,13 @@ sub gen_inline_pericmd_script {
         for (keys %metas) {
             $metas{$_} = Perinci::Sub::Normalize::normalize_function_metadata($metas{$_});
         }
-    } # GET_META
 
-    my $cd = {
-        req_modules => {},
-        vars => {},
-        subs => {},
-        module_srcs => {},
-    };
+        $cd->{script_name} = $script_name;
+        $cd->{metas} = \%metas;
+        $cd->{mods} = \%mods;
+        $cd->{sc_mods} = \%sc_mods;
+        $cd->{func_names} = \%func_names;
+    } # GET_META
 
     for (
         # required by Perinci::Result::Format::Lite. this will be removed if we
@@ -386,7 +770,7 @@ sub gen_inline_pericmd_script {
         "Text::Table::Tiny",
 
         @{ $args{include} // [] },
-     ) {
+    ) {
         _add_module($cd, $_);
     }
 
@@ -394,18 +778,15 @@ sub gen_inline_pericmd_script {
     {
         no strict 'refs';
 
-        my $skip_format = $args{skip_format} ||
-            (all { $metas{$_}{'cmdline.skip_format'} } keys %metas);
-
         my @l;
 
-        my %copts;
         {
             require Perinci::CmdLine::Base;
             no warnings 'once';
+            my %copts;
             $copts{help} = $Perinci::CmdLine::Base::copts{help};
             $copts{version} = $Perinci::CmdLine::Base::copts{version};
-            unless ($skip_format) {
+            unless ($args{skip_format}) {
                 _add_module($cd, "JSON::Tiny::Subclassable");
                 $copts{json} = $Perinci::CmdLine::Base::copts{json};
                 $copts{format} = $Perinci::CmdLine::Base::copts{format};
@@ -421,6 +802,11 @@ sub gen_inline_pericmd_script {
                     summary => "When outputing as JSON, don't strip result envelope",
                 };
             }
+            if ($args{subcommands}) {
+                $copts{subcommands} = $Perinci::CmdLine::Base::copts{subcommands};
+                $copts{cmd}         = $Perinci::CmdLine::Base::copts{cmd};
+            }
+            $cd->{copts} = \%copts;
         }
 
         my $shebang_line;
@@ -474,10 +860,14 @@ _
     exit $res->[0]-300;
 _
 
-        $cd->{sub_srcs}{_pci_debug} = <<'_' if $args{with_debug};
+        if ($args{with_debug}) {
+            _add_module($cd, "Data::Dmp");
+            _add_module($cd, "Regexp::Stringify"); # needed by Data::Dmp
+            $cd->{sub_srcs}{_pci_debug} = <<'_';
     require Data::Dmp;
     print "DEBUG: ", Data::Dmp::dmp(@_), "\n";
 _
+        }
 
         $cd->{sub_srcs}{_pci_json} = <<'_';
     state $json = do {
@@ -495,374 +885,83 @@ _
             $cd->{module_srcs}{'Local::_pci_clean_json'} = "require Scalar::Util; use feature 'state'; sub _pci_clean_json { state \$cleanser = $src; \$cleanser->(shift) }\n1;\n";
         }
 
-        require Perinci::Sub::GetArgs::Argv;
-        my %ggl_res; # key = subcommand name
-        my %args_as; # key = subcommand name
-        for my $sc_name (keys %metas) {
-            my $meta = $metas{$sc_name};
-            my $args_as = $meta->{args_as} // 'hash';
-            if ($args_as !~ /\A(hashref|hash)\z/) {
-                return [501, "args_as=$args_as currently unsupported at subcommand='$sc_name'"];
+        {
+            require Perinci::Sub::GetArgs::Argv;
+            my %ggl_res; # key = subcommand name
+            my %args_as; # key = subcommand name
+            for my $sc_name (keys %{ $cd->{metas} }) {
+                my $meta = $cd->{metas}{$sc_name};
+                my $args_as = $meta->{args_as} // 'hash';
+                if ($args_as !~ /\A(hashref|hash)\z/) {
+                    return [501, "args_as=$args_as currently unsupported at subcommand='$sc_name'"];
+                }
+                $args_as{$sc_name} = $args_as;
+
+                my $ggl_res = Perinci::Sub::GetArgs::Argv::gen_getopt_long_spec_from_meta(
+                    meta => $meta,
+                    meta_is_normalized => 1,
+                    per_arg_json => 1,
+                    common_opts => $cd->{copts},
+                );
+                return [500, "Can't generate Getopt::Long spec from meta (subcommand='$sc_name'): ".
+                            "$ggl_res->[0] - $ggl_res->[1]"]
+                    unless $ggl_res->[0] == 200;
+                $ggl_res{$sc_name} = $ggl_res;
             }
-            $args_as{$sc_name} = $args_as;
-
-            my $ggl_res = Perinci::Sub::GetArgs::Argv::gen_getopt_long_spec_from_meta(
-                meta => $meta,
-                meta_is_normalized => 1,
-                per_arg_json => 1,
-                common_opts => \%copts,
-            );
-            return [500, "Can't generate Getopt::Long spec from meta (subcommand='$sc_name'): ".
-                        "$ggl_res->[0] - $ggl_res->[1]"]
-            unless $ggl_res->[0] == 200;
-            $ggl_res{$sc_name} = $ggl_res;
-
-            # gen function to check arguments
-            {
-                my @l2;
-                push @l2, '    my $args = shift;', "\n";
-                my $args_prop = $meta->{args} // {};
-
-                push @l2, "  FILL_FROM_POS: {\n";
-                push @l2, "        1;\n";
-                for my $arg (sort {
-                    ($args_prop->{$b}{pos} // 9999) <=>
-                        ($args_prop->{$a}{pos} // 9999)
-                    } keys %$args_prop) {
-                    my $arg_spec = $args_prop->{$arg};
-                    my $arg_opts = $ggl_res->[3]{'func.opts_by_arg'}{$arg};
-                    next unless defined $arg_spec->{pos};
-                    push @l2, '        if (@ARGV > '.$arg_spec->{pos}.') {';
-                    push @l2, ' if (exists $args->{"'.$arg.'"}) {';
-                    push @l2, ' return [400, "You specified '.$arg_opts->[0].' but also argument #'.$arg_spec->{pos}.'"];';
-                    push @l2, " } else {";
-                    if ($arg_spec->{greedy}) {
-                        push @l2, ' $args->{"'.$arg.'"} = [splice(@ARGV, '.$arg_spec->{pos}.')];';
-                    } else {
-                        push @l2, ' $args->{"'.$arg.'"} = delete($ARGV['.$arg_spec->{pos}.']);';
-                    }
-                    push @l2, " }";
-                    push @l2, " }\n";
-                }
-                push @l2, "    }\n";
-                push @l2, '    my @check_argv = @ARGV;', "\n";
-
-                push @l2, '    # fill from cmdline_src', "\n";
-                {
-                    my $stdin_seen;
-                    my $req_gen_iter;
-                    for my $arg (sort {
-                        my $asa = $args_prop->{$a};
-                        my $asb = $args_prop->{$b};
-                        my $csa = $asa->{cmdline_src} // '';
-                        my $csb = $asb->{cmdline_src} // '';
-                        # stdin_line is processed before stdin
-                        ($csa eq 'stdin_line' ? 1:2) <=>
-                            ($csa eq 'stdin_line' ? 1:2)
-                                ||
-                                    ($asa->{pos} // 9999) <=> ($asb->{pos} // 9999)
-                                } keys %$args_prop) {
-                        my $arg_spec = $args_prop->{$arg};
-                        my $cs = $arg_spec->{cmdline_src};
-                        my $sch = $arg_spec->{schema} // '';
-                        $sch = $sch->[1]{of} if $arg_spec->{stream} && $sch->[0] eq 'array';
-                        my $type = Data::Sah::Util::Type::get_type($sch);
-                        next unless $cs;
-                        if ($cs eq 'stdin_line') {
-                            # XXX support stdin_line, cmdline_prompt, is_password (for disabling echo)
-                            return [501, "cmdline_src=stdin_line is not yet supported"];
-                        } elsif ($cs eq 'stdin_or_file') {
-                            return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
-                                if defined $stdin_seen;
-                            $stdin_seen = $arg;
-                            # XXX support - to mean stdin
-                            push @l2, ' { my $fh;';
-                            push @l2, ' if (exists $args->{"'.$arg.'"}) {';
-                            push @l2, ' open $fh, "<", $args->{"'.$arg.'"} or _pci_err([500,"Cannot open file \'".$args->{"'.$arg.'"}."\': $!"]);';
-                            push @l2, ' } else { $fh = \*STDIN }';
-                            if ($arg_spec->{stream}) {
-                                $req_gen_iter++;
-                                push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
-                        } elsif ($type eq 'array') {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; [<$fh>] }';
-                        } else {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<$fh> }';
-                        }
-                        push @l2, " }\n";
-                    } elsif ($cs eq 'file') {
-                        # XXX support - to mean stdin
-                        push @l2, '    if (!(exists $args->{"'.$arg.'"}) && '.($arg_spec->{req} ? 1:0).') { _pci_err([500,"Please specify filename for argument \''.$arg.'\'"]) }';
-                        push @l2, ' if (exists $args->{"'.$arg.'"}) {';
-                        push @l2, ' open my($fh), "<", $args->{"'.$arg.'"} or _pci_err([500,"Cannot open file \'".$_pci_args{"'.$arg.'"}."\': $!"]);';
-                        if ($arg_spec->{stream}) {
-                            $req_gen_iter++;
-                            push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter($fh, "'.$type.'", "'.$arg.'")';
-                        } elsif ($type eq 'array') {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; [<$fh>] }';
-                        } else {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<$fh> }';
-                        }
-                        push @l2, " }\n";
-                    } elsif ($cs eq 'stdin') {
-                        return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
-                            if defined $stdin_seen;
-                        $stdin_seen = $arg;
-                        push @l2, '    unless (exists $args->{"'.$arg.'"}) {';
-                        if ($arg_spec->{stream}) {
-                            $req_gen_iter++;
-                            push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter(\*STDIN, "'.$type.'", "'.$arg.'")';
-                        } elsif ($type eq 'array') {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; [<STDIN>] }';
-                        } else {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<STDIN> }';
-                        }
-                        push @l2, " }\n";
-                    } elsif ($cs eq 'stdin_or_files') {
-                        return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
-                            if defined $stdin_seen;
-                        $stdin_seen = $arg;
-                        push @l2, '    unless (exists $args->{"'.$arg.'"}) {';
-                        push @l2, ' @check_argv = ();';
-                        if ($arg_spec->{stream}) {
-                            $req_gen_iter++;
-                            push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter(\*ARGV, "'.$type.'", "'.$arg.'")';
-                        } elsif ($type eq 'array') {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; [<>] }';
-                        } else {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<> }';
-                        }
-                        push @l2, " }\n";
-                    } elsif ($cs eq 'stdin_or_args') {
-                        return [400, "arg $arg: More than one cmdline_src=/stdin/ is found (arg=$stdin_seen)"]
-                            if defined $stdin_seen;
-                        $stdin_seen = $arg;
-                        push @l2, '    unless (exists $args->{"'.$arg.'"}) {';
-                        push @l2, ' @check_argv = ();';
-                        if ($arg_spec->{stream}) {
-                            $req_gen_iter++;
-                            push @l2, ' $args->{"'.$arg.'"} = _pci_gen_iter(\*STDIN, "'.$type.'", "'.$arg.'")';
-                        } elsif ($type eq 'array') {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; [map {chomp;$_} <>] }';
-                        } else {
-                            push @l2, ' $args->{"'.$arg.'"} = do { local $/; ~~<> }';
-                        }
-                        push @l2, " }\n";
-                    } else {
-                        return [400, "arg $arg: unknown cmdline_src value '$cs'"];
-                    }
-                }
-
-                unless ($req_gen_iter) {
-                    delete $cd->{sub_srcs}{_pci_gen_iter};
-                    delete $cd->{module_srcs}{'Data::Sah::Util::Type'};
-                }
-            }
-            push @l2, "\n";
-
-            push @l2, '    # fill defaults from "default" property and check against schema', "\n";
-          GEN_VALIDATION:
-            {
-                my $has_validation;
-                my @l3;
-                my @modules_for_all_args;
-                my @req_stmts;
-                for my $arg (sort keys %$args_prop) {
-                    my $arg_spec = $args_prop->{$arg};
-
-                    # we don't validate streaming input for now
-                    next if $arg_spec->{stream};
-
-                    my $arg_schema = $arg_spec->{schema};
-                    my $arg_term = '$args->{"'.$arg.'"}';
-                    if (defined $arg_spec->{default}) {
-                        push @l3, "    $arg_term //= ".dmp($arg_spec->{default}).";\n";
-                    }
-                    if ($arg_schema) {
-                        $has_validation++;
-                        my $dsah_cd = _dsah_plc->compile(
-                            schema => $arg_schema,
-                            schema_is_normalized => 1,
-                            indent_level => 2,
-
-                            data_term => $arg_term,
-                            err_term => '$_sahv_err',
-                            return_type => 'str',
-
-                            core_or_pp => 1,
-                            ( whitelist_modules => $args{allow_prereq} ) x !!$args{allow_prereq},
-                        );
-                        die "Incompatible Data::Sah version (cd v=$dsah_cd->{v}, expected 2)" unless $dsah_cd->{v} == 2;
-                        # add require statements for modules needed during
-                        # validation
-                        for my $mod_rec (@{$dsah_cd->{modules}}) {
-                            next unless $mod_rec->{phase} eq 'runtime';
-                            next if grep { ($mod_rec->{use_statement} && $_->{use_statement} && $_->{use_statement} eq $mod_rec->{use_statement}) ||
-                                               $_->{name} eq $mod_rec->{name} } @modules_for_all_args;
-                            push @modules_for_all_args, $mod_rec;
-                            if ($mod_rec->{name} =~ /\A(Scalar::Util::Numeric::PP)\z/) {
-                                _add_module($cd, $mod_rec->{name});
-                            }
-                            my $mod_is_core = Module::CoreList::More->is_still_core($mod_rec->{name});
-                            $log->warnf("Validation code requires non-core module '%s'", $mod_rec->{name})
-                                unless $mod_is_core && !$cd->{module_srcs}{$mod_rec->{name}} &&
-                                !($args{allow_prereq} && grep { $_ eq $mod_rec->{name} } @{$args{allow_prereq}});
-                            # skip modules that we already require at the
-                            # beginning of script
-                            next if exists $cd->{req_modules}{$mod_rec->{name}};
-                            push @req_stmts, _dsah_plc->stmt_require_module($mod_rec);
-                        }
-                        push @l3, "    if (exists $arg_term) {\n";
-                        push @l3, "        \$_sahv_dpath = [];\n";
-                        push @l3, $dsah_cd->{result}, "\n";
-                        push @l3, "         ; if (\$_sahv_err) { return [400, \"Argument validation failed: \$_sahv_err\"] }\n";
-                        push @l3, "    } # if date arg exists\n";
-                    }
-                }
-                push @l3, "\n";
-
-                if ($has_validation) {
-                    push @l2, map {"    $_\n"} @req_stmts;
-                    push @l2, "    my \$_sahv_dpath;\n";
-                    push @l2, "    my \$_sahv_err;\n";
-                }
-
-                push @l2, @l3;
-            } # GEN_VALIDATION
-
-            push @l2, '    # check required args', "\n";
-            for my $arg (sort keys %$args_prop) {
-                my $arg_spec = $args_prop->{$arg};
-                if ($arg_spec->{req}) {
-                    push @l2, '    return [400, "Missing required argument: '.$arg.'"] unless exists $args->{"'.$arg.'"};', "\n";
-                }
-                if ($arg_spec->{schema}[1]{req}) {
-                    push @l2, '    return [400, "Missing required value for argument: '.$arg.'"] if exists($args->{"'.$arg.'"}) && !defined($args->{"'.$arg.'"});', "\n";
-                }
-            }
-
-            push @l2, '    _pci_err([500, "Extraneous command-line argument(s): ".join(", ", @check_argv)]) if @check_argv;', "\n";
-            push @l2, '    [200];', "\n";
-            $cd->{module_srcs}{"Local::_pci_check_args"} = "sub _pci_check_args {\n".join('', @l2)."}\n1;\n";
+            $cd->{ggl_res} = \%ggl_res;
+            $cd->{args_as} = \%args_as;
+            _gen_pci_check_args($cd);
         }
 
-        $cd->{vars}{'$_pci_r'} = {naked_res=>0};
+        $cd->{vars}{'$_pci_r'} = {naked_res=>0, subcommand_name=>''};
 
         # gen code to parse cmdline options
         $cd->{vars}{'%_pci_args'} = undef;
         push @l, "### parse cmdline options\n\n";
-        push @l, "{\n";
-
-        if ($args{subcommands}) {
-
-        } else {
-            _gen_parse($cd, $go_spec);
-            _add_module($cd, "Getopt::Long::EvenLess");
-            push @l, "require Getopt::Long::EvenLess;\n";
-            push @l, 'my %mentioned_args;', "\n";
-            {
-                push @l, 'my $go_spec = {', "\n";
-                for my $go_spec (sort keys %{ $ggl_res->[2] }) {
-                    my $specmeta = $ggl_res->[3]{'func.specmeta'}{$go_spec};
-                    push @l, "    '$go_spec' => sub {\n";
-                    if ($specmeta->{common_opt}) {
-                        if ($specmeta->{common_opt} eq 'help') {
-                            require Perinci::CmdLine::Help;
-                            my $res = Perinci::CmdLine::Help::gen_help(
-                                meta => $meta,
-                                common_opts => \%copts,
-                                program_name => $script_name,
-                            );
-                            return [500, "Can't generate help: $res->[0] - $res->[1]"]
-                                unless $res->[0] == 200;
-                            push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
-                        } elsif ($specmeta->{common_opt} eq 'version') {
-                            no strict 'refs';
-                            my $mod = $sc_mods{''};
-                            push @l, "        no warnings 'once';\n";
-                            push @l, "        require $mod;\n" if $mod;
-                            push @l, '        print "', $script_name , ' version ", ',
-                                (defined($args{script_version}) ? "\"$args{script_version}\"" :
-                                     "(\$$mod\::VERSION // '?')"),
-                                         ", (\$$mod\::DATE ? \" (\$$mod\::DATE)\" : '')",
-                                             ', "\\n";', "\n";
-                            push @l, '        print "  Generated by ', __PACKAGE__ , ' version ',
-                                (${__PACKAGE__."::VERSION"} // 'dev'),
-                                    (${__PACKAGE__."::DATE"} ? " (".${__PACKAGE__."::DATE"}.")" : ""),
-                                        '\n";', "\n";
-                            push @l, '        exit 0;', "\n";
-                        } elsif ($specmeta->{common_opt} eq 'format') {
-                            push @l, '        $_pci_r->{format} = $_[1];', "\n";
-                        } elsif ($specmeta->{common_opt} eq 'json') {
-                            push @l, '        $_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json";', "\n";
-                        } elsif ($specmeta->{common_opt} eq 'naked_res') {
-                            push @l, '        $_pci_r->{naked_res} = 1;', "\n";
-                        } elsif ($specmeta->{common_opt} eq 'no_naked_res') {
-                            push @l, '        $_pci_r->{naked_res} = 0;', "\n";
-                        } else {
-                            die "BUG: Unrecognized common_opt '$specmeta->{common_opt}'";
-                        }
-                    } else {
-                        my $arg_spec = $meta->{args}{$specmeta->{arg}};
-                        push @l, '        ';
-                        if ($specmeta->{is_alias} && $specmeta->{is_code}) {
-                            my $alias_spec = $arg_spec->{cmdline_aliases}{$specmeta->{alias}};
-                            if ($specmeta->{is_code}) {
-                                push @l, 'my $code = ', dmp($alias_spec->{code}), '; ';
-                                push @l, '$code->(\%_pci_args);';
-                            } else {
-                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
-                        }
-                    } else {
-                        if (($specmeta->{parsed}{type} // '') =~ /\@/) {
-                            push @l, 'if ($mentioned_args{\'', $specmeta->{arg}, '\'}++) { push @{ $_pci_args{\'', $specmeta->{arg}, '\'} }, $_[1] } else { $_pci_args{\'', $specmeta->{arg}, '\'} = [$_[1]] }';
-                        } elsif ($specmeta->{is_json}) {
-                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json()->decode($_[1]);';
-                            _add_module($cd, "JSON::Tiny::Subclassable");
-                        } else {
-                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
-                        }
-                    }
-                    push @l, "\n";
-                }
-                push @l, "    },\n";
-            }
-            push @l, "};\n";
-            push @l, 'my $res = Getopt::Long::EvenLess::GetOptions(%$go_spec);', "\n";
-            push @l, '_pci_debug("args after GetOptions: ", \%_pci_args);', "\n" if $args{with_debug};
-            push @l, '_pci_err([500, "GetOptions failed"]) unless $res;', "\n";
-            push @l, 'require Local::_pci_check_args; ' if $pack_deps;
-            push @l, '$res = _pci_check_args(\\%_pci_args);', "\n";
-            push @l, '_pci_debug("args after _pci_check_args: ", \%_pci_args);', "\n" if $args{with_debug};
-            push @l, '_pci_err($res) if $res->[0] != 200;', "\n";
-            push @l, '$_pci_r->{args} = \\%_pci_args;', "\n";
-        }
-        push @l, "}\n\n";
+        push @l, "{\n", _gen_parse_opts($cd), "}\n\n";
 
         # generate code to call function
         push @l, "### call function\n\n";
+        $cd->{vars}{'$_pci_meta_result_stream'} = 0;
+        $cd->{vars}{'$_pci_meta_skip_format'} = 0;
+        $cd->{vars}{'$_pci_meta_result_type'} = undef;
+        $cd->{vars}{'$_pci_meta_result_type_is_simple'} = undef;
         push @l, "{\n";
-        push @l, "require $sc_mods{''};\n" if $sc_mods{''};
+        push @l, 'my $sc_name = $_pci_r->{subcommand_name};' . "\n";
         push @l, '$_pci_args{-cmdline} = Perinci::CmdLine::Inline::Object->new(@{', dmp([%args]), '});', "\n"
             if $args{pass_cmdline_object};
-        push @l, 'eval { $_pci_r->{res} = ', $func_names{''}, ($args_as eq 'hashref' ? '(\\%_pci_args)' : '(%_pci_args)'), ' };', "\n";
-        push @l, 'if ($@) { $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
-        if ($meta->{result_naked}) {
-            push @l, '$_pci_r->{res} = [200, "OK (envelope added by Perinci::CmdLine::Inline)", $_pci_r->{res}];', "\n";
+        {
+            my $i = -1;
+            for my $sc_name (sort keys %{ $cd->{metas} }) {
+                $i++;
+                my $meta = $cd->{metas}{$sc_name};
+                push @l, ($i ? 'elsif' : 'if').' ($sc_name eq '.dmp($sc_name).") {\n";
+                push @l, '    $_pci_meta_result_stream = 1;'."\n" if $meta->{result}{stream};
+                push @l, '    $_pci_meta_skip_format = 1;'."\n" if $meta->{'cmdline.skip_format'};
+                push @l, '    $_pci_meta_result_type = '.dmp(Data::Sah::Util::Type::get_type($meta->{result}{schema} // '') // '').";\n";
+                push @l, '    $_pci_meta_result_type_is_simple = 1;'."\n" if Data::Sah::Util::Type::is_simple($meta->{result}{schema} // '');
+                push @l, "    require $cd->{sc_mods}{$sc_name};\n" if $cd->{sc_mods}{$sc_name};
+                push @l, '    eval { $_pci_r->{res} = ', $cd->{func_names}{$sc_name}, ($cd->{args_as}{$sc_name} eq 'hashref' ? '(\\%_pci_args)' : '(%_pci_args)'), ' };', "\n";
+                push @l, '    if ($@) { $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
+                if ($meta->{result_naked}) {
+                    push @l, '    $_pci_r->{res} = [200, "OK (envelope added by Perinci::CmdLine::Inline)", $_pci_r->{res}];', "\n";
+                }
+                push @l, "}\n";
+            }
         }
         push @l, "}\n\n";
 
         # generate code to format & display result
-        my $type = Data::Sah::Util::Type::get_type($meta->{result}{schema}//'') // '';
         push @l, "### format & display result\n\n";
         push @l, "{\n";
         push @l, 'my $fres;', "\n";
         push @l, 'my $save_res; if (exists $_pci_r->{res}[3]{"cmdline.result"}) { $save_res = $_pci_r->{res}[2]; $_pci_r->{res}[2] = $_pci_r->{res}[3]{"cmdline.result"} }', "\n";
         push @l, 'my $is_success = $_pci_r->{res}[0] =~ /\A2/ || $_pci_r->{res}[0] == 304;', "\n";
-        push @l, 'my $is_stream = $_pci_r->{res}[3]{stream} // ' . ($meta->{result}{stream} ? 1:'undef'), " // 0;\n";
-        push @l, 'if ($is_success && (', ($skip_format ? 1:0), ' || $_pci_r->{res}[3]{"cmdline.skip_format"})) { $fres = $_pci_r->{res}[2] }', "\n";
+        push @l, 'my $is_stream = $_pci_r->{res}[3]{stream} // $_pci_meta_result_stream // 0;'."\n";
+        push @l, 'if ($is_success && (', ($args{skip_format} ? 1:0), ' || $_pci_meta_skip_format || $_pci_r->{res}[3]{"cmdline.skip_format"})) { $fres = $_pci_r->{res}[2] }', "\n";
         push @l, 'elsif ($is_success && $is_stream) {}', "\n";
         push @l, 'else { ';
-        push @l, 'require Local::_pci_clean_json; ' if $pack_deps;
+        push @l, 'require Local::_pci_clean_json; ' if $args{pack_deps};
         push @l, 'require Perinci::Result::Format::Lite; $is_stream=0; _pci_clean_json($_pci_r->{res}); $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
         push @l, "\n";
 
@@ -870,7 +969,7 @@ _
         push @l, 'if ($use_utf8) { binmode STDOUT, ":utf8" }', "\n";
 
         push @l, 'if ($is_stream) {', "\n";
-        push @l, '    my $code = $_pci_r->{res}[2]; if (ref($code) ne "CODE") { die "Result is a stream but no coderef provided" } if ('.(Data::Sah::Util::Type::is_simple($type) ? 1:0).') { while(defined(my $l=$code->())) { print $l; print "\n" unless "'.($type).'" eq "buf"; } } else { while (defined(my $rec=$code->())) { print _pci_json()->encode($rec),"\n" } }', "\n";
+        push @l, '    my $code = $_pci_r->{res}[2]; if (ref($code) ne "CODE") { die "Result is a stream but no coderef provided" } if ($_pci_meta_result_type_is_simple) { while(defined(my $l=$code->())) { print $l; print "\n" unless $_pci_meta_result_type eq "buf"; } } else { while (defined(my $rec=$code->())) { print _pci_json()->encode($rec),"\n" } }', "\n";
         push @l, '} else {', "\n";
         push @l, '    print $fres;', "\n";
         push @l, '}', "\n";
@@ -886,7 +985,7 @@ _
         push @l, "}\n\n";
 
         # remove unneeded modules
-        if ($skip_format) {
+        if ($args{skip_format}) {
             delete $cd->{module_srcs}{'Data::Check::Structure'};
             delete $cd->{module_srcs}{'Perinci::Result::Format::Lite'};
             delete $cd->{module_srcs}{'Text::Table::Tiny'};
@@ -905,7 +1004,7 @@ _
         }
 
         my ($dp_code1, $dp_code2);
-        if ($pack_deps) {
+        if ($args{pack_deps}) {
             require Module::DataPack;
             my $dp_res = Module::DataPack::datapack_modules(
                 module_srcs => $cd->{module_srcs},
@@ -915,10 +1014,6 @@ _
                 unless $dp_res->[0] == 200;
             ($dp_code1, $dp_code2) = $dp_res->[2] =~ /(.+?)^(__DATA__\n.+)/sm;
         } else {
-            # remove all modules except Local::*
-            for (keys %{ $cd->{module_srcs} }) {
-                delete $cd->{module_srcs}{$_} unless /\ALocal::/;
-            }
             $dp_code1 = "";
             $dp_code2 = "";
             for my $pkg (sort keys %{ $cd->{module_srcs} }) {
@@ -948,7 +1043,7 @@ _
             " version ", (${__PACKAGE__."::VERSION"} // 'dev'), " on ",
             scalar(localtime), ".\n\n",
 
-            (keys %mods ? "# Rinci metadata taken from these modules: ".join(", ", map {"$_ ".$mods{$_}{version}} sort keys %mods)."\n\n" : ""),
+            (keys %{$cd->{mods}} ? "# Rinci metadata taken from these modules: ".join(", ", map {"$_ ".$cd->{mods}{$_}{version}} sort keys %{$cd->{mods}})."\n\n" : ""),
 
             "# You probably should not manually edit this file.\n\n",
 
@@ -957,7 +1052,7 @@ _
             "# VERSION\n",
             "# PODNAME: ", ($args{script_name} // ''), "\n",
             do {
-                my $abstract = $args{script_summary} // $meta->{summary};
+                my $abstract = $args{script_summary} // $cd->{metas}{''}{summary};
                 if ($abstract) {
                     ("# ABSTRACT: ", $abstract, "\n");
                 } else {
