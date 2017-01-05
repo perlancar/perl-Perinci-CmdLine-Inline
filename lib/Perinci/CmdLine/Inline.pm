@@ -297,7 +297,7 @@ sub _gen_pci_check_args {
         push @l2, '        [200];', "\n";
         push @l2, '    }';
     } # for subcommand
-    push @l2, "\n";
+    push @l2, ' else { _pci_err([500, "Unknown subcommand: $sc_name"]); }', "\n";
     $cd->{module_srcs}{"Local::_pci_check_args"} = "sub _pci_check_args {\n".join('', @l2)."}\n1;\n";
 }
 
@@ -327,32 +327,74 @@ sub _gen_parse_opts {
             meta => $cd->{metas}{''},
             common_opts => $cd->{copts},
             program_name => $cd->{script_name},
+            subcommands => $cd->{gen_args}{subcommands},
         );
         return [500, "Can't generate help (subcommand=''): $res->[0] - $res->[1]"]
             unless $res->[0] == 200;
         $helps{''} = $res->[2];
 
-        use DD; for (keys %helps) { print "$_\n\n$helps{$_}\n\n" }
-
         _add_module($cd, "Getopt::Long::Subcommand");
         # we don't add the Complete::* that Getopt::Long::Subcommand depends to
+
+        push @l, 'my $help_msg = ', dmp($helps{''}), ";\n";
+
         push @l, "require Getopt::Long::Subcommand;\n";
-        #push @l, "Getopt::Long::Subcommand::GetOptions(\n";
-        #push @l, "  options => {\n";
-        my @sc_names = sort keys %{ $cd->{metas} };
-        my $ggl_res = $cd->{ggl_res}{$sc_names[0]};
-        my $specmeta = $ggl_res->[3]{'func.specmeta'};
-        for my $o (sort keys %$specmeta) {
-            my $s = $specmeta->{$o};
-            next unless $s->{common_opt};
-            #push @l, "    '$o' => {\n";
-            #if ($scif (push @l, "      handler => ";
-        }
+        push @l, 'my $res = Getopt::Long::Subcommand::GetOptions(', "\n";
 
         # common options
+        push @l, "  options => {\n";
+        my @sc_names = sort keys %{ $cd->{metas} };
+        my $ggl_res = $cd->{ggl_res}{$sc_names[0]};
+        my $specmetas = $ggl_res->[3]{'func.specmeta'};
+        for my $o (sort keys %$specmetas) {
+            my $specmeta = $specmetas->{$o};
+            my $co = $specmeta->{common_opt};
+            next unless $co;
+            push @l, "    '$o' => {\n";
+            push @l, "      handler => sub {\n";
+
+            push @l, '        ';
+            if ($co eq 'help') {
+                push @l, 'my $sc_name = $_pci_r->{subcommand_name}; if (!length $sc_name && @ARGV) { $sc_name = shift @ARGV } ';
+                push @l, 'if (!$sc_name) { print $help_msg } ';
+                for (sort keys %helps) {
+                    push @l, 'elsif ($sc_name eq '.dmp($_).') { print '.dmp($helps{$_}).' } ';
+                }
+                push @l, 'else { _pci_err([500, "Unknown subcommand: $sc_name"]) } ';
+                push @l, 'exit 0';
+            } elsif ($co eq 'subcommands') {
+                my $scs_text = "Available subcommands:\n";
+                for (sort keys %{ $cd->{metas} }) {
+                    $scs_text .= "  $_\n";
+                }
+                push @l, 'print ', dmp($scs_text), "; exit 0;\n";
+            } elsif ($co eq 'cmd') {
+                push @l, '$_pci_r->{subcommand_name} = $_[1];', "\n";
+            } elsif ($co eq 'version') {
+            } elsif ($co eq 'format') {
+                push @l, '$_pci_r->{format} = $_[1];', "\n";
+            } elsif ($co eq 'json') {
+                push @l, '$_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json";', "\n";
+            } elsif ($co eq 'naked_res') {
+                push @l, '$_pci_r->{naked_res} = 1;', "\n";
+            } elsif ($co eq 'no_naked_res') {
+                push @l, '$_pci_r->{naked_res} = 0;', "\n";
+            } else {
+                die "BUG: Unrecognized common_opt '$co'";
+            }
+
+            push @l, "      },\n";
+            push @l, "    },\n";
+        }
+        push @l, "  },\n";
 
         for my $sc_name (sort keys %{ $cd->{metas} }) {
         }
+        push @l, ");\n";
+        push @l, '_pci_debug("args after GetOptions: ", \%_pci_args);', "\n" if $cd->{gen_args}{with_debug};
+        push @l, '_pci_err([500, "GetOptions failed"]) unless $res->{success};', "\n";
+        push @l, 'if (!length $_pci_r->{subcommand_name} && @ARGV) { $_pci_r->{subcommand_name} = shift @ARGV }', "\n";
+        push @l, 'unless (length $_pci_r->{subcommand_name}) { print $help_msg; exit 0 }', "\n";
 
     } else {
 
@@ -364,8 +406,9 @@ sub _gen_parse_opts {
         for my $go_spec (sort keys %{ $cd->{ggl_res}{''}[2] }) {
             my $specmeta = $cd->{ggl_res}{''}[3]{'func.specmeta'}{$go_spec};
             push @l, "    '$go_spec' => sub {\n";
-            if ($specmeta->{common_opt}) {
-                if ($specmeta->{common_opt} eq 'help') {
+            my $co = $specmeta->{common_opt};
+            if ($co) {
+                if ($co eq 'help') {
                     require Perinci::CmdLine::Help;
                     my $res = Perinci::CmdLine::Help::gen_help(
                         meta => $meta,
@@ -375,7 +418,7 @@ sub _gen_parse_opts {
                     return [500, "Can't generate help: $res->[0] - $res->[1]"]
                         unless $res->[0] == 200;
                     push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
-                } elsif ($specmeta->{common_opt} eq 'version') {
+                } elsif ($co eq 'version') {
                     no strict 'refs';
                     my $mod = $cd->{sc_mods}{''};
                     push @l, "        no warnings 'once';\n";
@@ -390,16 +433,16 @@ sub _gen_parse_opts {
                         (${__PACKAGE__."::DATE"} ? " (".${__PACKAGE__."::DATE"}.")" : ""),
                         '\n";', "\n";
                     push @l, '        exit 0;', "\n";
-                } elsif ($specmeta->{common_opt} eq 'format') {
+                } elsif ($co eq 'format') {
                     push @l, '        $_pci_r->{format} = $_[1];', "\n";
-                } elsif ($specmeta->{common_opt} eq 'json') {
+                } elsif ($co eq 'json') {
                     push @l, '        $_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json";', "\n";
-                } elsif ($specmeta->{common_opt} eq 'naked_res') {
+                } elsif ($co eq 'naked_res') {
                     push @l, '        $_pci_r->{naked_res} = 1;', "\n";
-                } elsif ($specmeta->{common_opt} eq 'no_naked_res') {
+                } elsif ($co eq 'no_naked_res') {
                     push @l, '        $_pci_r->{naked_res} = 0;', "\n";
                 } else {
-                    die "BUG: Unrecognized common_opt '$specmeta->{common_opt}'";
+                    die "BUG: Unrecognized common_opt '$co'";
                 }
             } else {
                 my $arg_spec = $meta->{args}{$specmeta->{arg}};
@@ -430,11 +473,6 @@ sub _gen_parse_opts {
         push @l, 'my $res = Getopt::Long::EvenLess::GetOptions(%$go_spec);', "\n";
         push @l, '_pci_debug("args after GetOptions: ", \%_pci_args);', "\n" if $cd->{gen_args}{with_debug};
         push @l, '_pci_err([500, "GetOptions failed"]) unless $res;', "\n";
-        push @l, 'require Local::_pci_check_args; ' if $cd->{gen_args}{pack_deps};
-        push @l, '$res = _pci_check_args(\\%_pci_args);', "\n";
-        push @l, '_pci_debug("args after _pci_check_args: ", \%_pci_args);', "\n" if $cd->{gen_args}{with_debug};
-        push @l, '_pci_err($res) if $res->[0] != 200;', "\n";
-        push @l, '$_pci_r->{args} = \\%_pci_args;', "\n";
 
     }
 
@@ -700,7 +738,7 @@ sub gen_inline_pericmd_script {
                 };
                 $metas{$sc_name} = $res->[2];
                 $sc_mods{$sc_name} = $res->[3]{'func.module'};
-                $func_names{$sc_name} = $res->[3]{'func.name'};
+                $func_names{$sc_name} = $res->[3]{'func.func_name'};
             }
         }
 
@@ -919,6 +957,16 @@ _
         $cd->{vars}{'%_pci_args'} = undef;
         push @l, "### parse cmdline options\n\n";
         push @l, "{\n", _gen_parse_opts($cd), "}\n\n";
+
+        # gen code to check arguments
+        push @l, "### parse cmdline options\n\n";
+        push @l, "{\n";
+        push @l, 'require Local::_pci_check_args; ' if $cd->{gen_args}{pack_deps};
+        push @l, 'my $res = _pci_check_args(\\%_pci_args);', "\n";
+        push @l, '_pci_debug("args after _pci_check_args: ", \%_pci_args);', "\n" if $cd->{gen_args}{with_debug};
+        push @l, '_pci_err($res) if $res->[0] != 200;', "\n";
+        push @l, '$_pci_r->{args} = \\%_pci_args;', "\n";
+        push @l, "}\n\n";
 
         # generate code to call function
         push @l, "### call function\n\n";
