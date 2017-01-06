@@ -24,7 +24,6 @@ pericmd_ok(
 
         # currently unsupported
         'dry-run',
-        'subcommand',
         'env',
         'config-file',
         'validate-streaming-input',
