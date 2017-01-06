@@ -1,5 +1,15 @@
 Revision history for Perinci-CmdLine-Inline
 
+0.41    2017-01-06 (PERLANCAR)
+
+        - Support subcommands.
+
+        - Add option 'pack_deps' to make it possible to not datapack
+          dependencies.
+
+        - Check that args_as property in metadata is hash/hashref.
+
+
 0.40    2016-12-28 (PERLANCAR)
 
 	- No functional changes.
