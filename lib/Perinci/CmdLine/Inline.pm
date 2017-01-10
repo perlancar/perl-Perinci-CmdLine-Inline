@@ -13,6 +13,7 @@ use Data::Dmp;
 use JSON::MaybeXS ();
 use Module::CoreList::More;
 use Module::Path::More qw(module_path);
+use Perinci::Sub::Util qw(err);
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(gen_inline_pericmd_script);
@@ -753,6 +754,11 @@ https://www.debian.org/doc/debian-policy/ch-source.html#s-embeddedfiles ).
 
 _
         },
+        pod => {
+            summary => 'Whether to generate POD for the script',
+            schema => ['bool*', is=>1],
+            default => 1,
+        },
 
         output_file => {
             summary => 'Set output file, defaults to stdout',
@@ -1136,6 +1142,28 @@ _
             }
         }
 
+        my $pod;
+        if ($args{pod} // 1) {
+            require Perinci::CmdLine::POD;
+            my $res = Perinci::CmdLine::POD::gen_pod_for_pericmd_script(
+                url                => $args{url},
+                program_name       => $cd->{script_name},
+                summary            => $args{script_summary},
+                common_opts        => $cd->{copts},
+                subcommands        => $args{subcommands},
+                default_subcommand => $args{default_subcommand},
+                per_arg_json       => 1,
+                per_arg_yaml       => 0,
+                read_env           => 0, # TODO
+                #env_name           => $args{env_name}, TODO
+                read_config        => 0, # TODO
+                #config_filename    => $args{config_filenames},
+                #config_dirs        => $args{config_dirs},
+            );
+            return err($res, 500, "Can't generate POD") unless $res->[0] == 200;
+            $pod = $res->[2];
+        }
+
         # generate final result
         $cd->{result} = join(
             "",
@@ -1201,6 +1229,8 @@ _
             ("### code_before_parse_cmdline_options\n", $args{code_before_parse_cmdline_options}, "\n") x !!$args{code_before_parse_cmdline_options},
 
             @l,
+
+            defined $pod ? ("=pod\n\n", "=encoding UTF-8\n\n", $pod, "\n\n=cut\n\n") : (),
 
             $dp_code2,
 
