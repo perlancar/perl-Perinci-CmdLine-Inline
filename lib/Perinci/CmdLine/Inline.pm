@@ -305,7 +305,7 @@ sub _gen_pci_check_args {
     $cd->{module_srcs}{"Local::_pci_check_args"} = "sub _pci_check_args {\n".join('', @l2)."}\n1;\n";
 }
 
-sub _gen_parse_opts {
+sub _gen_get_args {
     my ($cd) = @_;
 
     my @l;
@@ -561,7 +561,6 @@ my %pericmd_attrs = (
           log
           tags
           read_env env_name
-          read_config config_dirs config_filename
           get_subcommand_from_arg
          /),
 
@@ -690,14 +689,41 @@ _
             schema  => 'str*',
         },
         validate_args => {
-            summary => 'Whether to validate arguments using schemas',
+            summary => 'Whether the CLI script should validate arguments using schemas',
             schema  => 'bool',
             default => 1,
         },
         #validate_result => {
-        #    summary => 'Whether to validate result using schemas',
+        #    summary => 'Whether the CLI script should validate result using schemas',
         #    schema  => 'bool',
         #    default => 1,
+        #},
+        read_config => {
+            summary => 'Whether the CLI script should read configuration files',
+            schema => 'bool*',
+            default => 1,
+        },
+        config_filename => {
+            summary => 'Configuration file name(s)',
+            schema => ['any*', of=>[
+                'str*',
+                'hash*',
+                ['array*', of=>['any*', of=>['str*','hash*']]],
+            ]],
+        },
+        config_dirs => {
+            'x.name.is_plural' => 1,
+            'x.name.singular' => 'config_dir',
+            summary => 'Where to search for configuration files',
+            schema => ['array*', of=>'str*'],
+        },
+        #read_env => {
+        #    summary => 'Whether CLI script should read environment variable that sets default options',
+        #    schema => 'bool*',
+        #},
+        #env_name => {
+        #    summary => 'Name of environment variable name that sets default options',
+        #    schema => 'str*',
         #},
 
         with_debug => {
@@ -917,6 +943,11 @@ sub gen_inline_pericmd_script {
                 $copts{subcommands} = $Perinci::CmdLine::Base::copts{subcommands};
                 $copts{cmd}         = $Perinci::CmdLine::Base::copts{cmd};
             }
+            if ($args{read_config}) {
+                for (qw/config_path no_config config_profile/) {
+                    $copts{$_} = $Perinci::CmdLine::Base::copts{$_};
+                }
+            }
             $cd->{copts} = \%copts;
         }
 
@@ -1025,13 +1056,12 @@ _
 
         $cd->{vars}{'$_pci_r'} = {naked_res=>0, subcommand_name=>''};
 
-        # gen code to parse cmdline options
         $cd->{vars}{'%_pci_args'} = undef;
-        push @l, "### parse cmdline options\n\n";
-        push @l, "{\n", _gen_parse_opts($cd), "}\n\n";
+        push @l, "### get arguments (from config file, env, command-line args\n\n";
+        push @l, "{\n", _gen_get_args($cd), "}\n\n";
 
         # gen code to check arguments
-        push @l, "### parse cmdline options\n\n";
+        push @l, "### check arguments\n\n";
         push @l, "{\n";
         push @l, 'require Local::_pci_check_args; ' if $cd->{gen_args}{pack_deps};
         push @l, 'my $res = _pci_check_args(\\%_pci_args);', "\n";
@@ -1158,9 +1188,9 @@ _
                 per_arg_yaml       => 0,
                 read_env           => 0, # TODO
                 #env_name           => $args{env_name}, TODO
-                read_config        => 0, # TODO
-                #config_filename    => $args{config_filenames},
-                #config_dirs        => $args{config_dirs},
+                read_config        => $args{read_config},
+                config_filename    => $args{config_filenames},
+                config_dirs        => $args{config_dirs},
                 completer_script    => "_$cd->{script_name}",
             );
             return err($res, 500, "Can't generate POD") unless $res->[0] == 200;
