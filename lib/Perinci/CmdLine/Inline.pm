@@ -68,6 +68,71 @@ sub _get_meta_from_url {
     }];
 }
 
+sub _gen_read_env {
+    my ($cd) = @_;
+    my @l2;
+
+    return "" unless $cd->{gen_args}{read_env};
+
+    _add_module($cd, "Complete::Bash");
+    push @l2, "{\n";
+    push @l2, '  last unless $_pci_r->{read_env};', "\n";
+    push @l2, '  my $env = $ENV{', dmp($cd->{gen_args}{env_name}), '};', "\n";
+    push @l2, '  last unless defined $env;', "\n";
+    push @l2, '  require Complete::Bash;', "\n";
+    push @l2, '  my ($words, undef) = @{ Complete::Bash::parse_cmdline($env, 0) };', "\n";
+    push @l2, '  unshift @ARGV, @$words;', "\n";
+    push @l2, "}\n";
+
+    join("", @l2);
+}
+
+sub _gen_read_config {
+    my ($cd) = @_;
+    my @l2;
+
+    return "" unless $cd->{gen_args}{read_config};
+
+    push @l2, 'if ($_pci_r->{read_config}) {', "\n";
+    _add_module($cd, "Perinci::CmdLine::Util::Config");
+    _add_module($cd, "Data::Sah::Normalize"); # required by Perinci::CmdLine::Util::Config
+    _add_module($cd, "Log::Any"); # required by Perinci::CmdLine::Util::Config
+    _add_module($cd, "Perinci::Sub::Normalize"); # required by Perinci::CmdLine::Util::Config
+    _add_module($cd, "Sah::Schema::rinci::function_meta"); # required by Perinci::Sub::Normalize
+    push @l2, '  require Perinci::CmdLine::Util::Config;', "\n";
+    push @l2, "\n";
+    push @l2, '  my $res = Perinci::CmdLine::Util::Config::read_config(', "\n";
+    push @l2, '    config_paths     => $_pci_r->{config_paths},', "\n";
+    push @l2, '    config_filename  => ', dmp($cd->{gen_args}{config_filename}), ",\n";
+    push @l2, '    config_dirs      => ', dmp($cd->{gen_args}{config_dirs}), ' // ["$ENV{HOME}/.config", $ENV{HOME}, "/etc"],', "\n";
+    push @l2, '    program_name     => ', dmp($cd->{script_name}), ",\n";
+    push @l2, '  );', "\n";
+    push @l2, '  _pci_err($res) unless $res->[0] == 200;', "\n";
+    push @l2, '  $_pci_r->{config} = $res->[2];', "\n";
+    push @l2, '  $_pci_r->{read_config_files} = $res->[3]{"func.read_files"};', "\n";
+    push @l2, '  $_pci_r->{_config_section_read_order} = $res->[3]{"func.section_read_order"}; # we currently dont want to publish this request key', "\n";
+    push @l2, "\n";
+    push @l2, '  $res = Perinci::CmdLine::Util::Config::get_args_from_config(', "\n";
+    push @l2, '    r                  => $_pci_r,', "\n";
+    push @l2, '    config             => $_pci_r->{config},', "\n";
+    push @l2, '    args               => \%_pci_args,', "\n";
+    push @l2, '    program_name       => ', dmp($cd->{script_name}), ",\n";
+    push @l2, '    subcommand_name    => $_pci_r->{subcommand_name},', "\n";
+    push @l2, '    config_profile     => $_pci_r->{config_profile},', "\n";
+    push @l2, '    common_opts        => {},', "\n"; # XXX so currently we can't set e.g. format or
+    push @l2, '    meta               => $_pci_metas{ $_pci_r->{subcommand_name} },', "\n";
+    push @l2, '    meta_is_normalized => 1,', "\n";
+    push @l2, '  );', "\n";
+    push @l2, '  die $res unless $res->[0] == 200;', "\n";
+    push @l2, '  my $found = $res->[3]{"func.found"};', "\n";
+    push @l2, '  if (defined($_pci_r->{config_profile}) && !$found && defined($_pci_r->{read_config_files}) && @{$_pci_r->{read_config_files}} && !$_pci_r->{ignore_missing_config_profile_section}) {', "\n";
+    push @l2, '    _pci_err([412, "Profile \'$_pci_r->{config_profile}\' not found in configuration file"]);', "\n";
+    push @l2, '  }', "\n";
+    push @l2, '}', "\n"; # if read_config
+
+    join ("", @l2);
+}
+
 sub _gen_pci_check_args {
     my ($cd) = @_;
 
@@ -468,79 +533,101 @@ sub _gen_get_args {
         _add_module($cd, "Getopt::Long::EvenLess");
         push @l, "require Getopt::Long::EvenLess;\n";
         my $meta = $cd->{metas}{''};
-        push @l, 'my $go_spec = {', "\n";
-        for my $go_spec (sort keys %{ $cd->{ggl_res}{''}[2] }) {
-            my $specmeta = $cd->{ggl_res}{''}[3]{'func.specmeta'}{$go_spec};
-            push @l, "    '$go_spec' => sub {\n";
-            my $co = $specmeta->{common_opt};
-            if ($co) {
-                if ($co eq 'help') {
-                    require Perinci::CmdLine::Help;
-                    my $res = Perinci::CmdLine::Help::gen_help(
-                        meta => $meta,
-                        common_opts => $cd->{copts},
-                        program_name => $cd->{script_name},
-                    );
-                    return [500, "Can't generate help: $res->[0] - $res->[1]"]
-                        unless $res->[0] == 200;
-                    push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
-                } elsif ($co eq 'version') {
-                    # begin A, duplicated by B
-                    no strict 'refs';
-                    my $mod = $cd->{sc_mods}{''};
-                    push @l, "        no warnings 'once';\n";
-                    push @l, "        require $mod;\n" if $mod;
-                    push @l, '        print "', $cd->{script_name} , ' version ", ',
-                        (defined($cd->{gen_args}{script_version}) ? "\"$cd->{gen_args}{script_version}\"" :
-                         "(\$$mod\::VERSION // '?')"),
-                         ", (\$$mod\::DATE ? \" (\$$mod\::DATE)\" : '')",
-                         ', "\\n";', "\n";
-                    push @l, '        print "  Generated by ', __PACKAGE__ , ' version ',
-                        (${__PACKAGE__."::VERSION"} // 'dev'),
-                        (${__PACKAGE__."::DATE"} ? " (".${__PACKAGE__."::DATE"}.")" : ""),
-                        '\n";', "\n";
-                    push @l, '        exit 0;', "\n";
-                    # end A
-                } elsif ($co eq 'format') {
-                    push @l, '        $_pci_r->{format} = $_[1];', "\n";
-                } elsif ($co eq 'json') {
-                    push @l, '        $_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json";', "\n";
-                } elsif ($co eq 'naked_res') {
-                    push @l, '        $_pci_r->{naked_res} = 1;', "\n";
-                } elsif ($co eq 'no_naked_res') {
-                    push @l, '        $_pci_r->{naked_res} = 0;', "\n";
-                } else {
-                    die "BUG: Unrecognized common_opt '$co'";
-                }
-            } else {
-                my $arg_spec = $meta->{args}{$specmeta->{arg}};
-                push @l, '        ';
-                if ($specmeta->{is_alias} && $specmeta->{is_code}) {
-                    my $alias_spec = $arg_spec->{cmdline_aliases}{$specmeta->{alias}};
-                    if ($specmeta->{is_code}) {
-                        push @l, 'my $code = ', dmp($alias_spec->{code}), '; ';
-                        push @l, '$code->(\%_pci_args);';
+        # stage 1 is catching common options only (--help, etc)
+        for my $stage (1, 2) {
+            push @l, "my \$go_spec$stage = {\n";
+            for my $go_spec (sort keys %{ $cd->{ggl_res}{''}[2] }) {
+                my $specmeta = $cd->{ggl_res}{''}[3]{'func.specmeta'}{$go_spec};
+                my $co = $specmeta->{common_opt};
+                next if $stage == 1 && !$co;
+                push @l, "    '$go_spec' => sub {\n"; # begin option handler
+                if ($co) {
+                    if ($stage == 2) {
+                        # empty, we've done handling common options in stage 1
+                    } elsif ($co eq 'help') {
+                        require Perinci::CmdLine::Help;
+                        my $res = Perinci::CmdLine::Help::gen_help(
+                            meta => $meta,
+                            common_opts => $cd->{copts},
+                            program_name => $cd->{script_name},
+                        );
+                        return [500, "Can't generate help: $res->[0] - $res->[1]"]
+                            unless $res->[0] == 200;
+                        push @l, '        print ', dmp($res->[2]), '; exit 0;', "\n";
+                    } elsif ($co eq 'version') {
+                        # begin A, duplicated by B
+                        no strict 'refs';
+                        my $mod = $cd->{sc_mods}{''};
+                        push @l, "        no warnings 'once';\n";
+                        push @l, "        require $mod;\n" if $mod;
+                        push @l, '        print "', $cd->{script_name} , ' version ", ',
+                            (defined($cd->{gen_args}{script_version}) ? "\"$cd->{gen_args}{script_version}\"" :
+                             "(\$$mod\::VERSION // '?')"),
+                             ", (\$$mod\::DATE ? \" (\$$mod\::DATE)\" : '')",
+                             ', "\\n";', "\n";
+                        push @l, '        print "  Generated by ', __PACKAGE__ , ' version ',
+                            (${__PACKAGE__."::VERSION"} // 'dev'),
+                            (${__PACKAGE__."::DATE"} ? " (".${__PACKAGE__."::DATE"}.")" : ""),
+                            '\n";', "\n";
+                        push @l, '        exit 0;', "\n";
+                        # end A
+                    } elsif ($co eq 'format') {
+                        push @l, '        $_pci_r->{format} = $_[1];', "\n";
+                    } elsif ($co eq 'json') {
+                        push @l, '        $_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json";', "\n";
+                    } elsif ($co eq 'naked_res') {
+                        push @l, '        $_pci_r->{naked_res} = 1;', "\n";
+                    } elsif ($co eq 'no_naked_res') {
+                        push @l, '        $_pci_r->{naked_res} = 0;', "\n";
+                    } elsif ($co eq 'no_config') {
+                        push @l, '        $_pci_r->{read_config} = 0;', "\n";
+                    } elsif ($co eq 'config_path') {
+                        push @l, '        $_pci_r->{config_paths} //= 0;', "\n";
+                        push @l, '        push @{ $_pci_r->{config_paths} }, $_[1];', "\n";
+                    } elsif ($co eq 'config_profile') {
+                        push @l, '        $_pci_r->{config_profile} = $_[1];', "\n";
+                    } elsif ($co eq 'no_env') {
+                        push @l, '        $_pci_r->{read_env} = 0;', "\n";
                     } else {
-                        push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
+                        die "BUG: Unrecognized common_opt '$co'";
                     }
                 } else {
-                    if (($specmeta->{parsed}{type} // '') =~ /\@/) {
-                        push @l, 'if ($mentioned_args{\'', $specmeta->{arg}, '\'}++) { push @{ $_pci_args{\'', $specmeta->{arg}, '\'} }, $_[1] } else { $_pci_args{\'', $specmeta->{arg}, '\'} = [$_[1]] }';
-                    } elsif ($specmeta->{is_json}) {
-                        push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json()->decode($_[1]);';
-                        _add_module($cd, "JSON::Tiny::Subclassable");
+                    my $arg_spec = $meta->{args}{$specmeta->{arg}};
+                    push @l, '        ';
+                    if ($stage == 1) {
+                        # in stage 1, we do not yet deal with argument options
+                    } elsif ($specmeta->{is_alias} && $specmeta->{is_code}) {
+                        my $alias_spec = $arg_spec->{cmdline_aliases}{$specmeta->{alias}};
+                        if ($specmeta->{is_code}) {
+                            push @l, 'my $code = ', dmp($alias_spec->{code}), '; ';
+                            push @l, '$code->(\%_pci_args);';
+                        } else {
+                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
+                        }
                     } else {
-                        push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
+                        if (($specmeta->{parsed}{type} // '') =~ /\@/) {
+                            push @l, 'if ($mentioned_args{\'', $specmeta->{arg}, '\'}++) { push @{ $_pci_args{\'', $specmeta->{arg}, '\'} }, $_[1] } else { $_pci_args{\'', $specmeta->{arg}, '\'} = [$_[1]] }';
+                        } elsif ($specmeta->{is_json}) {
+                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json()->decode($_[1]);';
+                            _add_module($cd, "JSON::Tiny::Subclassable");
+                        } else {
+                            push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
+                        }
                     }
+                    push @l, "\n";
                 }
-                push @l, "\n";
-            }
-            push @l, "    },\n";
-        }
-        push @l, "};\n";
-        push @l, 'my $res = Getopt::Long::EvenLess::GetOptions(%$go_spec);', "\n";
-        push @l, '_pci_debug("args after GetOptions: ", \%_pci_args);', "\n" if $cd->{gen_args}{with_debug};
+                push @l, "    },\n"; # end option handler
+            } # options
+            push @l, "};\n";
+        } # stage
+        push @l, 'my $old_conf = Getopt::Long::EvenLess::Configure("pass_through");', "\n";
+        push @l, 'Getopt::Long::EvenLess::GetOptions(%$go_spec1);', "\n";
+        push @l, 'Getopt::Long::EvenLess::Configure($old_conf);', "\n";
+        push @l, _gen_read_env($cd);
+        push @l, _gen_read_config($cd);
+        push @l, 'my $res = Getopt::Long::EvenLess::GetOptions(%$go_spec2);', "\n";
         push @l, '_pci_err([500, "GetOptions failed"]) unless $res;', "\n";
+        push @l, '_pci_debug("args after GetOptions (stage 2): ", \%_pci_args);', "\n" if $cd->{gen_args}{with_debug};
 
     }
 
@@ -556,11 +643,11 @@ my %pericmd_attrs = (
             schema => 'any*',
         },
     )} qw/actions common_opts completion
+          default_format
           description exit formats
           riap_client riap_version riap_client_args
           log
           tags
-          read_env env_name
           get_subcommand_from_arg
          /),
 
@@ -646,7 +733,7 @@ _
         ],
         'req_one&' => [
             [qw/url meta/],
-            [qw/meta subcommands/],
+            [qw/url subcommands/],
         ],
         'choose_all&' => [
             [qw/meta sub_name/],
@@ -717,14 +804,14 @@ _
             summary => 'Where to search for configuration files',
             schema => ['array*', of=>'str*'],
         },
-        #read_env => {
-        #    summary => 'Whether CLI script should read environment variable that sets default options',
-        #    schema => 'bool*',
-        #},
-        #env_name => {
-        #    summary => 'Name of environment variable name that sets default options',
-        #    schema => 'str*',
-        #},
+        read_env => {
+            summary => 'Whether CLI script should read environment variable that sets default options',
+            schema => 'bool*',
+        },
+        env_name => {
+            summary => 'Name of environment variable name that sets default options',
+            schema => 'str*',
+        },
 
         with_debug => {
             summary => 'Generate script with debugging outputs',
@@ -767,7 +854,7 @@ _
 
         pack_deps => {
             summary => 'Whether to pack dependencies into the script',
-            schema => ['bool*', is=>1],
+            schema => ['bool*'],
             default => 1,
             description => <<'_',
 
@@ -782,7 +869,7 @@ _
         },
         pod => {
             summary => 'Whether to generate POD for the script',
-            schema => ['bool*', is=>1],
+            schema => ['bool*'],
             default => 1,
         },
 
@@ -808,6 +895,8 @@ sub gen_inline_pericmd_script {
     $args{validate_args} //= 1;
     #$args{validate_result} //= 1;
     $args{pack_deps} //= 1;
+    $args{read_config} //= 1;
+    $args{read_env} //= 1;
 
     my $cd = {
         gen_args => \%args,
@@ -891,6 +980,14 @@ sub gen_inline_pericmd_script {
         $cd->{func_names} = \%func_names;
     } # GET_META
 
+    $args{config_filename} //= "$cd->{script_name}.conf";
+    $args{env_name} //= do {
+        my $env = uc "$cd->{script_name}_OPT";
+        $env =~ s/[^A-Z0-9]+/_/g;
+        $env = "_$env" if $env =~ /\A\d/;
+        $env;
+    };
+
     for (
         # required by Perinci::Result::Format::Lite. this will be removed if we
         # don't need formatting.
@@ -945,6 +1042,11 @@ sub gen_inline_pericmd_script {
             }
             if ($args{read_config}) {
                 for (qw/config_path no_config config_profile/) {
+                    $copts{$_} = $Perinci::CmdLine::Base::copts{$_};
+                }
+            }
+            if ($args{read_env}) {
+                for (qw/no_env/) {
                     $copts{$_} = $Perinci::CmdLine::Base::copts{$_};
                 }
             }
@@ -1054,7 +1156,12 @@ _
             _gen_pci_check_args($cd);
         }
 
-        $cd->{vars}{'$_pci_r'} = {naked_res=>0, subcommand_name=>''};
+        $cd->{vars}{'$_pci_r'} = {
+            naked_res => 0,
+            subcommand_name => '',
+            read_config => $args{read_config},
+            read_env => $args{read_env},
+        };
 
         $cd->{vars}{'%_pci_args'} = undef;
         push @l, "### get arguments (from config file, env, command-line args\n\n";
@@ -1186,8 +1293,8 @@ _
                 default_subcommand => $args{default_subcommand},
                 per_arg_json       => 1,
                 per_arg_yaml       => 0,
-                read_env           => 0, # TODO
-                #env_name           => $args{env_name}, TODO
+                read_env           => $args{read_env},
+                env_name           => $args{env_name},
                 read_config        => $args{read_config},
                 config_filename    => $args{config_filenames},
                 config_dirs        => $args{config_dirs},
@@ -1213,11 +1320,10 @@ _
                 JSON::MaybeXS::encode_json(\%tmp);
             }, "\n\n",
 
-            "# PERICMD_INLINE_SCRIPT_METAS: ", do {
-                my $metas = Data::Clean::JSON->get_cleanser->clone_and_clean(
-                    $cd->{metas});
-                JSON::MaybeXS::encode_json($metas);
-            }, "\n\n",
+            'my %_pci_metas = %{ ', do {
+                local $Data::Dmp::OPT_DEPARSE=0;
+                dmp($cd->{metas});
+            }, " };\n\n",
 
             "# This script is generated by ", __PACKAGE__,
             " version ", (${__PACKAGE__."::VERSION"} // 'dev'), " on ",
