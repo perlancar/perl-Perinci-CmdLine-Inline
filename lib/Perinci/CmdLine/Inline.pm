@@ -1123,7 +1123,7 @@ _
                 );
         }
 
-        my ($dp_code1, $dp_code2);
+        my ($dp_code1, $dp_code2, $dp_code3);
         if ($args{pack_deps}) {
             require Module::DataPack;
             my $dp_res = Module::DataPack::datapack_modules(
@@ -1132,10 +1132,12 @@ _
             );
             return [500, "Can't datapack: $dp_res->[0] - $dp_res->[1]"]
                 unless $dp_res->[0] == 200;
-            ($dp_code1, $dp_code2) = $dp_res->[2] =~ /(.+?)^(__DATA__\n.+)/sm;
+            $dp_code2 = "";
+            ($dp_code1, $dp_code3) = $dp_res->[2] =~ /(.+?)^(__DATA__\n.+)/sm;
         } else {
             $dp_code1 = "";
             $dp_code2 = "";
+            $dp_code3 = "";
             for my $pkg (sort keys %{ $cd->{module_srcs} }) {
                 my $src = $cd->{module_srcs}{$pkg};
                 $dp_code2 .= "# BEGIN $pkg\n$src\n# END $pkg\n\n";
@@ -1230,9 +1232,11 @@ _
 
             @l,
 
+            $dp_code2,
+
             defined $pod ? ("=pod\n\n", "=encoding UTF-8\n\n", $pod, "\n\n=cut\n\n") : (),
 
-            $dp_code2,
+            $dp_code3,
 
             ("### code_after_end\n", $args{code_after_end}, "\n") x !!$args{code_after_end},
         );
