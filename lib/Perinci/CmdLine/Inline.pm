@@ -1161,6 +1161,7 @@ _
                 read_config        => 0, # TODO
                 #config_filename    => $args{config_filenames},
                 #config_dirs        => $args{config_dirs},
+                completer_script    => "_$cd->{script_name}",
             );
             return err($res, 500, "Can't generate POD") unless $res->[0] == 200;
             $pod = $res->[2];
