@@ -1,3 +1,10 @@
+0.44    2017-01-11 (PERLANCAR)
+
+	- Generate COMPLETION POD section.
+
+	- Tweak: put POD after subroutine declarations.
+
+
 0.43    2017-01-10 (PERLANCAR)
 
 	- Generate POD using Perinci::CmdLine::POD.
