@@ -1,3 +1,9 @@
+0.46    2017-01-12 (PERLANCAR)
+
+	- [dist] Forgot to include to prereqs modules that are used for
+	  embedding.
+
+
 0.45    2017-01-12 (PERLANCAR)
 
 	- Support reading configuration file.
