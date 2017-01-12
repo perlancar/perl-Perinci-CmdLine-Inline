@@ -1,3 +1,12 @@
+0.47    2017-01-12 (PERLANCAR)
+
+	- [Incompatible change] Change %_pci_metas to $_pci_metas due to
+	  limitation of %{ do { ... } } syntax.
+
+	- [Bugfix] Avoid perl undef warning when printing undefined module
+	  version.
+
+
 0.46    2017-01-12 (PERLANCAR)
 
 	- [dist] Forgot to include to prereqs modules that are used for
