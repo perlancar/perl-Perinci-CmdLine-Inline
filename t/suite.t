@@ -23,9 +23,8 @@ pericmd_ok(
         'cmdline_src',
 
         # currently unsupported
+        'config-file-sets-common-options',
         'dry-run',
-        'env',
-        'config-file',
         'validate-streaming-input',
         'validate-streaming-result',
         'validate-result',
