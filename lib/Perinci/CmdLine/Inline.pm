@@ -1347,7 +1347,7 @@ _
             " version ", (${__PACKAGE__."::VERSION"} // 'dev'), " on ",
             scalar(localtime), ".\n\n",
 
-            (keys %{$cd->{mods}} ? "# Rinci metadata taken from these modules: ".join(", ", map {"$_ ".$cd->{mods}{$_}{version}} sort keys %{$cd->{mods}})."\n\n" : ""),
+            (keys %{$cd->{mods}} ? "# Rinci metadata taken from these modules: ".join(", ", map {"$_ ".($cd->{mods}{$_}{version} // "(no version)")} sort keys %{$cd->{mods}})."\n\n" : ""),
 
             "# You probably should not manually edit this file.\n\n",
 
