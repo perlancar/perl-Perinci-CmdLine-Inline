@@ -25,8 +25,10 @@
 
 0.42    2017-01-09 (PERLANCAR)
 
-	- Generate #PERICMD_INLINE_SCRIPT_METAS that dumps the Rinci
-	  metadata to be read e.g. by Perinci::CmdLine::Dump.
+	- Generate #PERICMD_INLINE_SCRIPT_METAS that dumps the Rinci metadata to
+	  be read e.g. by Perinci::CmdLine::Dump. UPDATE 2017-01-12: in 0.45,
+	  replaced by 'my %_pci_metas = ...' line which is in Perl and is also
+	  used by the generated script.
 
 
 0.41    2017-01-06 (PERLANCAR)
