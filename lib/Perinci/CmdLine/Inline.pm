@@ -739,8 +739,6 @@ Currently it only supports a subset of features compared to other
 * Only support local Riap URL (e.g. `/Foo/bar`, not
   `http://example.org/Foo/bar`);
 
-* No configuration file support yet.
-
 As an alternative to this module, if you are looking to reduce dependencies, you
 might also want to try using `depak` to fatpack/datapack your
 <pm:Perinci::CmdLine::Lite>-based script.
