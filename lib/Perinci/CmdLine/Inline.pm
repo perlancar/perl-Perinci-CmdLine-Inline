@@ -8,7 +8,6 @@ use strict;
 use warnings;
 use Log::Any::IfLOG qw($log);
 
-use Data::Clean::JSON;
 use Data::Dmp;
 use JSON::MaybeXS ();
 use Module::CoreList::More;
@@ -720,6 +719,21 @@ _
         schema  => 'bool*',
         default => 0,
     },
+    use_cleanser => {
+        summary => 'Whether to use data cleanser routine first before producing JSON',
+        schema => 'bool*',
+        default => 1,
+        description => <<'_',
+
+When a function returns result, and the user wants to display the result as
+JSON, the result might need to be cleansed first (e.g. using <pm:Data::Clean>)
+before it can be encoded to JSON, for example it might contain Perl objects or
+scalar references or other stuffs. If you are sure that your function does not
+produce those kinds of data, you can set this to false to produce a more
+lightweight script.
+
+_
+    },
 );
 
 $SPEC{gen_inline_pericmd_script} = {
@@ -923,6 +937,7 @@ sub gen_inline_pericmd_script {
     $args{pack_deps} //= 1;
     $args{read_config} //= 1;
     $args{read_env} //= 1;
+    $args{use_cleanser} //= 1;
 
     my $cd = {
         gen_args => \%args,
@@ -1149,9 +1164,23 @@ _
 _
 
         {
-            my $cleanser = Data::Clean::JSON->get_cleanser;
-            my $src = $cleanser->{src};
-            $cd->{module_srcs}{'Local::_pci_clean_json'} = "require Scalar::Util; use feature 'state'; sub _pci_clean_json { state \$cleanser = $src; \$cleanser->(shift) }\n1;\n";
+            last unless $args{use_cleanser};
+            require Module::CoreList;
+            require Data::Clean::JSON;
+            my $cleanser = Data::Clean::JSON->new(
+                # pick this noncore PP module instead of the default non-core XS
+                # module Data::Clone. perl has core module Storable, but
+                # Storable still chooses to croak on Regexp objects.
+                '!clone_func' => 'Clone::PP::clone',
+            );
+            my $src = $cleanser->{_cd}{src};
+            my $src1 = 'sub _pci_clean_json { ';
+            for my $mod (keys %{ $cleanser->{_cd}{modules} }) {
+                $src1 .= "require $mod; ";
+                next if Module::CoreList->is_core($mod);
+                _add_module($cd, $mod);
+            }
+            $cd->{module_srcs}{'Local::_pci_clean_json'} = "$src1 use feature 'state'; state \$cleanser = $src; \$cleanser->(shift) }\n1;\n";
         }
 
         {
@@ -1244,8 +1273,10 @@ _
         push @l, 'if ($is_success && (', ($args{skip_format} ? 1:0), ' || $_pci_meta_skip_format || $_pci_r->{res}[3]{"cmdline.skip_format"})) { $fres = $_pci_r->{res}[2] }', "\n";
         push @l, 'elsif ($is_success && $is_stream) {}', "\n";
         push @l, 'else { ';
-        push @l, 'require Local::_pci_clean_json; ' if $args{pack_deps};
-        push @l, 'require Perinci::Result::Format::Lite; $is_stream=0; _pci_clean_json($_pci_r->{res}); $fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
+        push @l, 'require Local::_pci_clean_json; ' if $args{pack_deps} && $args{use_cleanser};
+        push @l, 'require Perinci::Result::Format::Lite; $is_stream=0; ';
+        push @l, '_pci_clean_json($_pci_r->{res}); ' if $args{use_cleanser};
+        push @l, '$fres = Perinci::Result::Format::Lite::format($_pci_r->{res}, ($_pci_r->{format} // $_pci_r->{res}[3]{"cmdline.default_format"} // "text"), $_pci_r->{naked_res}, 0) }', "\n";
         push @l, "\n";
 
         push @l, 'my $use_utf8 = $_pci_r->{res}[3]{"x.hint.result_binary"} ? 0 : '.($args{use_utf8} ? 1:0).";\n";
