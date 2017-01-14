@@ -1374,7 +1374,7 @@ _
                 for (grep {/^code_/} keys %tmp) {
                     $tmp{$_} = "...";
                 }
-                JSON::MaybeXS::encode_json(\%tmp);
+                JSON::MaybeXS->new->canonical(1)->encode(\%tmp);
             }, "\n\n",
 
             'my $_pci_metas = ', do {
