@@ -1062,7 +1062,6 @@ sub gen_inline_pericmd_script {
             $copts{help} = $Perinci::CmdLine::Base::copts{help};
             $copts{version} = $Perinci::CmdLine::Base::copts{version};
             unless ($args{skip_format}) {
-                _add_module($cd, "JSON::Tiny::Subclassable");
                 $copts{json} = $Perinci::CmdLine::Base::copts{json};
                 $copts{format} = $Perinci::CmdLine::Base::copts{format};
                 # "naked_res!" currently not supported by
@@ -1156,9 +1155,8 @@ _
 
         $cd->{sub_srcs}{_pci_json} = <<'_';
     state $json = do {
-        if    (eval { require JSON::XS; 1 }) { JSON::XS->new->canonical(1)->allow_nonref }
-        elsif (eval { require JSON::PP; 1 }) { JSON::PP->new->canonical(1)->allow_nonref }
-        else { require JSON::Tiny::Subclassable; JSON::Tiny::Subclassable->new }
+        if (eval { require JSON::XS; 1 }) { JSON::XS->new->canonical(1)->allow_nonref }
+        else { require JSON::PP; JSON::PP->new->canonical(1)->allow_nonref }
     };
     $json;
 _
