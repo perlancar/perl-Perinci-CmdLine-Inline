@@ -1,3 +1,29 @@
+0.48    2017-01-16 (PERLANCAR)
+
+	[ENHANCEMENTS]
+
+        - Add logging.
+
+        - Add option --(no-)use-cleanser to allow skipping cleansing.
+
+	- Add option --script-version-from-main-version.
+
+	[ETC]
+
+        - [dist] Update Data::Clean::JSON to 0.38 (to force update
+	  Data::Clean to 0.48).
+
+	- [opt] Don't bother using JSON::Tiny::Subclassable because JSON::PP is
+	  core and we assume it's always available.
+
+	- Use canonical(1) when producing #PERICMD_INLINE_SCRIPT for more
+	  consistent content.
+
+	[BUG FIXES]
+
+        - [Bugfix] Fix generation of cleansing code
+
+
 0.47    2017-01-12 (PERLANCAR)
 
 	- [Incompatible change] Change %_pci_metas to $_pci_metas due to
