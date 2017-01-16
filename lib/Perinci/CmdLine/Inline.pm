@@ -86,6 +86,26 @@ sub _gen_read_env {
     join("", @l2);
 }
 
+sub _gen_enable_log {
+    my ($cd) = @_;
+
+    _add_module($cd, 'Log::Any::Adapter::Screen');
+    _add_module($cd, 'Log::Any::Adapter'); # required by Log::Any::Adapter::Screen
+    _add_module($cd, 'Log::Any'); # required by Log::Any::Adapter
+    _add_module($cd, 'Log::Any::Manager'); # required by Log::Any
+    _add_module($cd, 'Log::Any::Proxy::Null'); # required by Log::Any
+    _add_module($cd, 'Log::Any::Adapter::Util'); # required by Log::Any
+
+    my @l;
+
+    push @l, "### enable logging\n";
+    push @l, 'require Log::Any::Adapter;', "\n";
+    push @l, 'Log::Any::Adapter->set("Screen");', "\n";
+    push @l, "\n";
+
+    join("", @l);
+}
+
 sub _gen_read_config {
     my ($cd) = @_;
     my @l2;
@@ -669,7 +689,6 @@ my %pericmd_attrs = (
           default_format
           description exit formats
           riap_client riap_version riap_client_args
-          log
           tags
           get_subcommand_from_arg
          /),
@@ -851,6 +870,11 @@ _
         env_name => {
             summary => 'Name of environment variable name that sets default options',
             schema => 'str*',
+        },
+        log => {
+            summary => 'Whether to enable logging',
+            schema  => 'bool*',
+            default => 0,
         },
 
         with_debug => {
@@ -1410,6 +1434,8 @@ _
             "#use warnings;\n",
             (map {"require $_;\n"} sort keys %{$cd->{req_modules}}),
             "\n",
+
+            $args{log} ? _gen_enable_log() : '',
 
             "### declare global variables\n\n",
             (map { "our $_" . (defined($cd->{vars}{$_}) ? " = ".dmp($cd->{vars}{$_}) : "").";\n" } sort keys %{$cd->{vars}}),
