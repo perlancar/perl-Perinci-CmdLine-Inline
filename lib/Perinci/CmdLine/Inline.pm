@@ -99,6 +99,7 @@ sub _gen_enable_log {
     my @l;
 
     push @l, "### enable logging\n";
+    push @l, 'require Log::Any; my $log = Log::Any->get_logger;', "\n";
     push @l, 'require Log::Any::Adapter;', "\n";
     push @l, 'Log::Any::Adapter->set("Screen");', "\n";
     push @l, "\n";
@@ -119,6 +120,7 @@ sub _gen_read_config {
     _add_module($cd, "Data::Sah::Normalize"); # required by Perinci::CmdLine::Util::Config
     _add_module($cd, "Perinci::Sub::Normalize"); # required by Perinci::CmdLine::Util::Config
     _add_module($cd, "Sah::Schema::rinci::function_meta"); # required by Perinci::Sub::Normalize
+    push @l2, '$log->tracef("Reading config file(s) ...");', "\n" if $cd->{gen_args}{log};
     push @l2, '  require Perinci::CmdLine::Util::Config;', "\n";
     push @l2, "\n";
     push @l2, '  my $res = Perinci::CmdLine::Util::Config::read_config(', "\n";
@@ -437,6 +439,26 @@ sub _gen_common_opt_handler {
                 (${__PACKAGE__."::DATE"} ? " (".${__PACKAGE__."::DATE"}.")" : ""),
                     '\n"; ';
         push @l, 'exit 0';
+    } elsif ($co eq 'log_level') {
+        push @l, 'if ($_[1] eq "trace") { Log::Any::Adapter->set("Screen", min_level=>"trace") } ';
+        push @l, 'if ($_[1] eq "debug") { Log::Any::Adapter->set("Screen", min_level=>"debug") } ';
+        push @l, 'if ($_[1] eq "info" ) { Log::Any::Adapter->set("Screen", min_level=>"info" ) } ';
+        push @l, 'if ($_[1] eq "error") { Log::Any::Adapter->set("Screen", min_level=>"error") } ';
+        push @l, 'if ($_[1] eq "fatal") { Log::Any::Adapter->set("Screen", min_level=>"fatal") } ';
+        push @l, 'if ($_[1] eq "none")  { Log::Any::Adapter->set("Screen", min_level=>"none")  } ';
+        push @l, '$_pci_r->{log_level} = $_[1];';
+    } elsif ($co eq 'trace') {
+        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"trace"); ';
+        push @l, '$_pci_r->{log_level} = "trace";';
+    } elsif ($co eq 'debug') {
+        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"debug"); ';
+        push @l, '$_pci_r->{log_level} = "debug";';
+    } elsif ($co eq 'verbose') {
+        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"info"); ';
+        push @l, '$_pci_r->{log_level} = "info";';
+    } elsif ($co eq 'quiet') {
+        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"error"); ';
+        push @l, '$_pci_r->{log_level} = "error";';
     } elsif ($co eq 'subcommands') {
         my $scs_text = "Available subcommands:\n";
         for (sort keys %{ $cd->{metas} }) {
@@ -455,14 +477,14 @@ sub _gen_common_opt_handler {
     } elsif ($co eq 'no_naked_res') {
         push @l, '$_pci_r->{naked_res} = 0;';
     } elsif ($co eq 'no_config') {
-        push @l, '        $_pci_r->{read_config} = 0;';
+        push @l, '$_pci_r->{read_config} = 0;';
     } elsif ($co eq 'config_path') {
-        push @l, '        $_pci_r->{config_paths} //= [];';
-        push @l, '        push @{ $_pci_r->{config_paths} }, $_[1];';
+        push @l, '$_pci_r->{config_paths} //= []; ';
+        push @l, 'push @{ $_pci_r->{config_paths} }, $_[1];';
     } elsif ($co eq 'config_profile') {
-        push @l, '        $_pci_r->{config_profile} = $_[1];';
+        push @l, '$_pci_r->{config_profile} = $_[1];';
     } elsif ($co eq 'no_env') {
-        push @l, '        $_pci_r->{read_env} = 0;';
+        push @l, '$_pci_r->{read_env} = 0;';
     } else {
         die "BUG: Unrecognized common_opt '$co'";
     }
@@ -478,6 +500,7 @@ sub _gen_get_args {
 
     _add_module($cd, "Getopt::Long::EvenLess");
     push @l, "require Getopt::Long::EvenLess;\n";
+    push @l, '$log->tracef("Parsing command-line arguments ...");', "\n" if $cd->{gen_args}{log};
 
     if ($cd->{gen_args}{subcommands}) {
 
@@ -1085,6 +1108,28 @@ sub gen_inline_pericmd_script {
             my %copts;
             $copts{help} = $Perinci::CmdLine::Base::copts{help};
             $copts{version} = $Perinci::CmdLine::Base::copts{version};
+            if ($args{log}) {
+                $copts{log_level} = {
+                    getopt  => "log-level=s",
+                    summary => "Set logging level (trace|debug|info|warn|error|fatal|none)",
+                };
+                $copts{trace} = {
+                    getopt  => "trace",
+                    summary => "Set logging level to trace",
+                };
+                $copts{debug} = {
+                    getopt  => "debug",
+                    summary => "Set logging level to debug",
+                };
+                $copts{verbose} = {
+                    getopt  => "verbose",
+                    summary => "Set logging level to info",
+                };
+                $copts{quiet} = {
+                    getopt  => "quiet",
+                    summary => "Set logging level to error",
+                };
+            }
             unless ($args{skip_format}) {
                 $copts{json} = $Perinci::CmdLine::Base::copts{json};
                 $copts{format} = $Perinci::CmdLine::Base::copts{format};
@@ -1261,6 +1306,7 @@ _
         $cd->{vars}{'$_pci_meta_result_type'} = undef;
         $cd->{vars}{'$_pci_meta_result_type_is_simple'} = undef;
         push @l, "{\n";
+        push @l, '$log->tracef("Calling function ...");', "\n" if $cd->{gen_args}{log};
         push @l, 'my $sc_name = $_pci_r->{subcommand_name};' . "\n";
         push @l, '$_pci_args{-cmdline} = Perinci::CmdLine::Inline::Object->new(@{', dmp([%args]), '});', "\n"
             if $args{pass_cmdline_object};
@@ -1288,6 +1334,7 @@ _
         # generate code to format & display result
         push @l, "### format & display result\n\n";
         push @l, "{\n";
+        push @l, '$log->tracef("Displaying result ...");', "\n" if $cd->{gen_args}{log};
         push @l, 'my $fres;', "\n";
         push @l, 'my $save_res; if (exists $_pci_r->{res}[3]{"cmdline.result"}) { $save_res = $_pci_r->{res}[2]; $_pci_r->{res}[2] = $_pci_r->{res}[3]{"cmdline.result"} }', "\n";
         push @l, 'my $is_success = $_pci_r->{res}[0] =~ /\A2/ || $_pci_r->{res}[0] == 304;', "\n";
