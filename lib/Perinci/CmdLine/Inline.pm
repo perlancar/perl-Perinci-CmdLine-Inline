@@ -101,7 +101,7 @@ sub _gen_enable_log {
     push @l, "### enable logging\n";
     push @l, 'require Log::Any; my $log = Log::Any->get_logger;', "\n";
     push @l, 'require Log::Any::Adapter;', "\n";
-    push @l, 'Log::Any::Adapter->set("Screen");', "\n";
+    push @l, 'Log::Any::Adapter->set("Screen", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },);', "\n";
     push @l, "\n";
 
     join("", @l);
@@ -440,24 +440,24 @@ sub _gen_common_opt_handler {
                     '\n"; ';
         push @l, 'exit 0';
     } elsif ($co eq 'log_level') {
-        push @l, 'if ($_[1] eq "trace") { Log::Any::Adapter->set("Screen", min_level=>"trace") } ';
-        push @l, 'if ($_[1] eq "debug") { Log::Any::Adapter->set("Screen", min_level=>"debug") } ';
-        push @l, 'if ($_[1] eq "info" ) { Log::Any::Adapter->set("Screen", min_level=>"info" ) } ';
-        push @l, 'if ($_[1] eq "error") { Log::Any::Adapter->set("Screen", min_level=>"error") } ';
-        push @l, 'if ($_[1] eq "fatal") { Log::Any::Adapter->set("Screen", min_level=>"fatal") } ';
-        push @l, 'if ($_[1] eq "none")  { Log::Any::Adapter->set("Screen", min_level=>"none")  } ';
+        push @l, 'if ($_[1] eq "trace") { Log::Any::Adapter->set("Screen", min_level=>"trace", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },) } ';
+        push @l, 'if ($_[1] eq "debug") { Log::Any::Adapter->set("Screen", min_level=>"debug", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },) } ';
+        push @l, 'if ($_[1] eq "info" ) { Log::Any::Adapter->set("Screen", min_level=>"info" , formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },) } ';
+        push @l, 'if ($_[1] eq "error") { Log::Any::Adapter->set("Screen", min_level=>"error", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },) } ';
+        push @l, 'if ($_[1] eq "fatal") { Log::Any::Adapter->set("Screen", min_level=>"fatal", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },) } ';
+        push @l, 'if ($_[1] eq "none")  { Log::Any::Adapter->set("Screen", min_level=>"none" , formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },) } ';
         push @l, '$_pci_r->{log_level} = $_[1];';
     } elsif ($co eq 'trace') {
-        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"trace"); ';
+        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"trace", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },); ';
         push @l, '$_pci_r->{log_level} = "trace";';
     } elsif ($co eq 'debug') {
-        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"debug"); ';
+        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"debug", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },); ';
         push @l, '$_pci_r->{log_level} = "debug";';
     } elsif ($co eq 'verbose') {
-        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"info"); ';
+        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"info" , formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },); ';
         push @l, '$_pci_r->{log_level} = "info";';
     } elsif ($co eq 'quiet') {
-        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"error"); ';
+        push @l, 'Log::Any::Adapter->set("Screen", min_level=>"error", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },); ';
         push @l, '$_pci_r->{log_level} = "error";';
     } elsif ($co eq 'subcommands') {
         my $scs_text = "Available subcommands:\n";
@@ -1482,7 +1482,7 @@ _
             (map {"require $_;\n"} sort keys %{$cd->{req_modules}}),
             "\n",
 
-            $args{log} ? _gen_enable_log() : '',
+            $args{log} ? _gen_enable_log($cd) : '',
 
             "### declare global variables\n\n",
             (map { "our $_" . (defined($cd->{vars}{$_}) ? " = ".dmp($cd->{vars}{$_}) : "").";\n" } sort keys %{$cd->{vars}}),
