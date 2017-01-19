@@ -605,7 +605,6 @@ sub _gen_get_args {
                                 push @l, 'if ($mentioned_args{\'', $specmeta->{arg}, '\'}++) { push @{ $_pci_args{\'', $specmeta->{arg}, '\'} }, $_[1] } else { $_pci_args{\'', $specmeta->{arg}, '\'} = [$_[1]] }';
                             } elsif ($specmeta->{is_json}) {
                                 push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json()->decode($_[1]);';
-                                _add_module($cd, "JSON::Tiny::Subclassable");
                             } else {
                                 push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
                             }
@@ -675,7 +674,6 @@ sub _gen_get_args {
                             push @l, 'if ($mentioned_args{\'', $specmeta->{arg}, '\'}++) { push @{ $_pci_args{\'', $specmeta->{arg}, '\'} }, $_[1] } else { $_pci_args{\'', $specmeta->{arg}, '\'} = [$_[1]] }';
                         } elsif ($specmeta->{is_json}) {
                             push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = _pci_json()->decode($_[1]);';
-                            _add_module($cd, "JSON::Tiny::Subclassable");
                         } else {
                             push @l, '$_pci_args{\'', $specmeta->{arg}, '\'} = $_[1];';
                         }
