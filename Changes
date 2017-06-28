@@ -1,3 +1,14 @@
+0.51    2017-06-28 (PERLANCAR)
+
+        - Switch from Log::Any to Log::ger.
+
+
+0.50    2017-01-19 (PERLANCAR)
+
+	- [Bugfix] Do not add no-longer-used module JSON::Tiny::Subclassable
+          [CT].
+
+
 0.49    2017-01-16 (PERLANCAR)
 
 	- Bug fix and prefix log messages with program name.
