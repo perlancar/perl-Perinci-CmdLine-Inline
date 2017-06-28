@@ -98,7 +98,7 @@ sub _gen_enable_log {
 
     push @l, "### enable logging\n";
     push @l, 'require Log::ger::Output; Log::ger::Output->set("Screen", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[1] },);', "\n";
-    push @l, 'require Log::ger; Log::ger->import', "\n";
+    push @l, 'require Log::ger; Log::ger->import;', "\n";
     push @l, "\n";
 
     join("", @l);
