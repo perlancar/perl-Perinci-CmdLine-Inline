@@ -3,8 +3,13 @@ package Perinci::CmdLine::Inline;
 # DATE
 # VERSION
 
+# line 820, don't know how to turn off this warning?
+## no critic (ValuesAndExpressions::ProhibitCommaSeparatedStatements)
+# false positive? perlcritic gives line 2333 which is way more than the number of lines of this script
+## no critic (InputOutput::RequireBriefOpen)
+
 use 5.010001;
-use strict;
+use strict 'subs', 'vars';
 use warnings;
 use Log::ger;
 
@@ -1092,8 +1097,6 @@ sub gen_inline_pericmd_script {
 
   GEN_SCRIPT:
     {
-        no strict 'refs';
-
         my @l;
 
         {
