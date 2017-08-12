@@ -635,8 +635,6 @@ sub _gen_get_args {
 
     } else {
 
-        _add_module($cd, "Getopt::Long::EvenLess");
-        push @l, "require Getopt::Long::EvenLess;\n";
         my $meta = $cd->{metas}{''};
         # stage 1 is catching common options only (--help, etc)
         for my $stage (1, 2) {
@@ -1474,8 +1472,12 @@ _
             "package main;\n",
             "use 5.010001;\n",
             "use strict;\n",
-            "#use warnings;\n",
+            "#use warnings;\n\n",
+
+            "# modules\n",
             (map {"require $_;\n"} sort keys %{$cd->{req_modules}}),
+            "\n",
+
             "\n",
 
             $args{log} ? _gen_enable_log($cd) : '',
