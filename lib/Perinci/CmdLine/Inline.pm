@@ -1346,7 +1346,7 @@ _
         push @l, "\n";
 
         push @l, 'my $use_utf8 = $_pci_r->{res}[3]{"x.hint.result_binary"} ? 0 : '.($args{use_utf8} ? 1:0).";\n";
-        push @l, 'if ($use_utf8) { binmode STDOUT, ":utf8" }', "\n";
+        push @l, 'if ($use_utf8) { binmode STDOUT, ":encoding(utf8)" }', "\n";
 
         push @l, 'if ($is_stream) {', "\n";
         push @l, '    my $code = $_pci_r->{res}[2]; if (ref($code) ne "CODE") { die "Result is a stream but no coderef provided" } if ($_pci_meta_result_type_is_simple) { while(defined(my $l=$code->())) { print $l; print "\n" unless $_pci_meta_result_type eq "buf"; } } else { while (defined(my $rec=$code->())) { print _pci_json()->encode($rec),"\n" } }', "\n";
