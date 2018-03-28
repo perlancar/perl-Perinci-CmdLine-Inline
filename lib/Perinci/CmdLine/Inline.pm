@@ -117,6 +117,7 @@ sub _gen_read_config {
 
     push @l2, 'if ($_pci_r->{read_config}) {', "\n";
     _add_module($cd, "Perinci::CmdLine::Util::Config");
+    _add_module($cd, "Log::ger"); # required by Perinci::CmdLine::Util::Config
     _add_module($cd, "Config::IOD::Reader"); # required by Perinci::CmdLine::Util::Config
     _add_module($cd, "Config::IOD::Base"); # required by Config::IOD::Reader
     _add_module($cd, "Data::Sah::Normalize"); # required by Perinci::CmdLine::Util::Config
