@@ -977,6 +977,7 @@ sub gen_inline_pericmd_script {
     require Data::Sah::Util::Type;
 
     my %args = @_;
+    $args{url} = "$args{url}"; # stringify URI object to avoid JSON encoder croaking
 
     # XXX schema
     $args{validate_args} //= 1;
