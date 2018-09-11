@@ -974,7 +974,7 @@ _
         stripper => {
             summary => 'Whether to strip code using Perl::Stripper',
             schema => 'bool*',
-            default => 1,
+            default => 0,
         },
     },
 };
@@ -1395,7 +1395,7 @@ _
             require Module::DataPack;
             my $dp_res = Module::DataPack::datapack_modules(
                 module_srcs => $cd->{module_srcs},
-                stripper    => $args{stripper} // 1,
+                stripper    => $args{stripper},
             );
             return [500, "Can't datapack: $dp_res->[0] - $dp_res->[1]"]
                 unless $dp_res->[0] == 200;
