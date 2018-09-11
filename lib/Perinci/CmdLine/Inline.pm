@@ -324,7 +324,8 @@ sub _gen_pci_check_args {
                 if (defined $arg_spec->{default}) {
                     push @l3, "        $arg_term //= ".dmp($arg_spec->{default}).";\n";
                 }
-                if ($arg_schema && $cd->{args}{validate_args}) {
+
+                if ($arg_schema && $cd->{gen_args}{validate_args}) {
                     $has_validation++;
                     my $dsah_cd = _dsah_plc->compile(
                         schema => $arg_schema,
