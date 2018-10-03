@@ -32,7 +32,7 @@ sub _dsah_plc {
     $plc;
 }
 
-sub _add_module {
+sub _pack_module {
     my ($cd, $mod) = @_;
     return unless $cd->{gen_args}{pack_deps};
     return if $cd->{module_srcs}{$mod};
@@ -78,7 +78,7 @@ sub _gen_read_env {
 
     return "" unless $cd->{gen_args}{read_env};
 
-    _add_module($cd, "Complete::Bash");
+    _pack_module($cd, "Complete::Bash");
     push @l2, "{\n";
     push @l2, '  last unless $_pci_r->{read_env};', "\n";
     push @l2, '  my $env = $ENV{', dmp($cd->{gen_args}{env_name}), '};', "\n";
@@ -94,10 +94,10 @@ sub _gen_read_env {
 sub _gen_enable_log {
     my ($cd) = @_;
 
-    _add_module($cd, 'Log::ger');
-    _add_module($cd, 'Log::ger::Output');
-    _add_module($cd, 'Log::ger::Output::Screen');
-    _add_module($cd, 'Log::ger::Util');
+    _pack_module($cd, 'Log::ger');
+    _pack_module($cd, 'Log::ger::Output');
+    _pack_module($cd, 'Log::ger::Output::Screen');
+    _pack_module($cd, 'Log::ger::Util');
 
     my @l;
 
@@ -116,13 +116,13 @@ sub _gen_read_config {
     return "" unless $cd->{gen_args}{read_config};
 
     push @l2, 'if ($_pci_r->{read_config}) {', "\n";
-    _add_module($cd, "Perinci::CmdLine::Util::Config");
-    _add_module($cd, "Log::ger"); # required by Perinci::CmdLine::Util::Config
-    _add_module($cd, "Config::IOD::Reader"); # required by Perinci::CmdLine::Util::Config
-    _add_module($cd, "Config::IOD::Base"); # required by Config::IOD::Reader
-    _add_module($cd, "Data::Sah::Normalize"); # required by Perinci::CmdLine::Util::Config
-    _add_module($cd, "Perinci::Sub::Normalize"); # required by Perinci::CmdLine::Util::Config
-    _add_module($cd, "Sah::Schema::rinci::function_meta"); # required by Perinci::Sub::Normalize
+    _pack_module($cd, "Perinci::CmdLine::Util::Config");
+    _pack_module($cd, "Log::ger"); # required by Perinci::CmdLine::Util::Config
+    _pack_module($cd, "Config::IOD::Reader"); # required by Perinci::CmdLine::Util::Config
+    _pack_module($cd, "Config::IOD::Base"); # required by Config::IOD::Reader
+    _pack_module($cd, "Data::Sah::Normalize"); # required by Perinci::CmdLine::Util::Config
+    _pack_module($cd, "Perinci::Sub::Normalize"); # required by Perinci::CmdLine::Util::Config
+    _pack_module($cd, "Sah::Schema::rinci::function_meta"); # required by Perinci::Sub::Normalize
     push @l2, 'log_trace("Reading config file(s) ...");', "\n" if $cd->{gen_args}{log};
     push @l2, '  require Perinci::CmdLine::Util::Config;', "\n";
     push @l2, "\n";
@@ -348,7 +348,7 @@ sub _gen_pci_check_args {
                                            $_->{name} eq $mod_rec->{name} } @modules_for_all_args;
                         push @modules_for_all_args, $mod_rec;
                         if ($mod_rec->{name} =~ /\A(Scalar::Util::Numeric::PP)\z/) {
-                            _add_module($cd, $mod_rec->{name});
+                            _pack_module($cd, $mod_rec->{name});
                         }
                         my $mod_is_core = Module::CoreList::More->is_still_core($mod_rec->{name});
                         log_warn("Validation code requires non-core module '%s'", $mod_rec->{name})
@@ -499,13 +499,13 @@ sub _gen_get_args {
 
     push @l, 'my %mentioned_args;', "\n";
 
-    _add_module($cd, "Getopt::Long::EvenLess");
+    _pack_module($cd, "Getopt::Long::EvenLess");
     push @l, "require Getopt::Long::EvenLess;\n";
     push @l, 'log_trace("Parsing command-line arguments ...");', "\n" if $cd->{gen_args}{log};
 
     if ($cd->{gen_args}{subcommands}) {
 
-        _add_module($cd, "Getopt::Long::Subcommand");
+        _pack_module($cd, "Getopt::Long::Subcommand");
         push @l, "require Getopt::Long::Subcommand;\n";
         # we haven't added the Complete::* that Getopt::Long::Subcommand depends on
 
@@ -823,6 +823,19 @@ _
         ],
    },
     args => {
+        action => {
+            summary => 'Specify action to perform',
+            schema => ['str*', in=>['gen-script', 'gen-script-deps', 'dump-raw']],
+            default => 'gen-script',
+            description => <<'_',
+
+Aside from generating the script (`gen-script`), this utility can also show what
+modules the script uses (`gen-script-deps`) or dump the raw compilation data
+(`dump-raw`).
+
+_
+            tags => ['category:action'],
+        },
         (map {
             $_ => {
                 %{ $pericmd_attrs{$_} },
@@ -992,6 +1005,7 @@ sub gen_inline_pericmd_script {
     $args{read_config} //= 1;
     $args{read_env} //= 1;
     $args{use_cleanser} //= 1;
+    my $action = $args{action} // 'gen-script';
 
     my $cd = {
         gen_args => \%args,
@@ -1100,7 +1114,7 @@ sub gen_inline_pericmd_script {
 
         @{ $args{include} // [] },
     ) {
-        _add_module($cd, $_);
+        _pack_module($cd, $_);
     }
 
   GEN_SCRIPT:
@@ -1219,8 +1233,8 @@ _
 _
 
         if ($args{with_debug}) {
-            _add_module($cd, "Data::Dmp");
-            _add_module($cd, "Regexp::Stringify"); # needed by Data::Dmp
+            _pack_module($cd, "Data::Dmp");
+            _pack_module($cd, "Regexp::Stringify"); # needed by Data::Dmp
             $cd->{sub_srcs}{_pci_debug} = <<'_';
     require Data::Dmp;
     print "DEBUG: ", Data::Dmp::dmp(@_), "\n";
@@ -1250,7 +1264,7 @@ _
             for my $mod (keys %{ $cleanser->{_cd}{modules} }) {
                 $src1 .= "require $mod; ";
                 next if Module::CoreList->is_core($mod);
-                _add_module($cd, $mod);
+                _pack_module($cd, $mod);
             }
             $cd->{module_srcs}{'Local::_pci_clean_json'} = "$src1 use feature 'state'; state \$cleanser = $src; \$cleanser->(shift) }\n1;\n";
         }
@@ -1518,6 +1532,14 @@ _
 
   WRITE_OUTPUT:
     {
+        if ($action eq 'dump-raw') {
+            return [200, "OK", $cd];
+        } elsif ($action eq 'gen-script-deps') {
+            return [200, "OK", $cd];
+        }
+
+        # action is 'gen-script'
+
         my ($fh, $output_is_stdout);
         if (!defined($args{output_file}) || $args{output_file} eq '-') {
             $output_is_stdout++;
