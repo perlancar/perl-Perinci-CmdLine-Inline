@@ -1,3 +1,11 @@
+0.544   2018-10-04 (PERLANCAR) (unreleased)
+
+        - Add option: --action. User can now dump raw compilation data using
+          `--action dump-raw`, or print dependencies of the script using
+          `--action dump-deps` or generate script as usual with `--action
+          gen-script`.
+
+
 0.543   2018-09-11 (PERLANCAR)
 
 	- Add option: stripper.
