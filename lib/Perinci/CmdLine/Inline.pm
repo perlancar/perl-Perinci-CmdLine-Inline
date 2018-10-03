@@ -823,19 +823,6 @@ _
         ],
    },
     args => {
-        action => {
-            summary => 'Specify action to perform',
-            schema => ['str*', in=>['gen-script', 'gen-script-deps', 'dump-raw']],
-            default => 'gen-script',
-            description => <<'_',
-
-Aside from generating the script (`gen-script`), this utility can also show what
-modules the script uses (`gen-script-deps`) or dump the raw compilation data
-(`dump-raw`).
-
-_
-            tags => ['category:action'],
-        },
         (map {
             $_ => {
                 %{ $pericmd_attrs{$_} },
@@ -1005,15 +992,15 @@ sub gen_inline_pericmd_script {
     $args{read_config} //= 1;
     $args{read_env} //= 1;
     $args{use_cleanser} //= 1;
-    my $action = $args{action} // 'gen-script';
 
     my $cd = {
         gen_args => \%args,
         script_name => $args{script_name},
-        req_modules => {},
+        req_modules => {}, # modules which we will 'require' at the beginning of script. currently unused.
         vars => {},
         subs => {},
         module_srcs => {},
+        core_deps => {}, # core modules required by the generated script. so we can specify dependencies to it, in environments where not all core modules are available.
     };
 
   GET_META:
@@ -1248,6 +1235,7 @@ _
     };
     $json;
 _
+        $cd->{sub_src_core_deps}{_pci_json}{'JSON::PP'} = 0;
 
         {
             last unless $args{use_cleanser};
@@ -1512,8 +1500,16 @@ _
             (keys(%{$cd->{vars}}) ? "\n" : ""),
 
             "### declare subroutines\n\n",
-            (map {"sub $_" . (ref($cd->{sub_srcs}{$_}) eq 'ARRAY' ?
-                "($cd->{sub_srcs}{$_}[0]) {\n$cd->{sub_srcs}{$_}[1]}\n\n" : " {\n$cd->{sub_srcs}{$_}}\n\n")}
+            (map {
+                my $sub = $_;
+                if ($cd->{sub_src_core_deps}{$sub}) {
+                    for my $mod (keys %{ $cd->{sub_src_core_deps}{$sub} }) {
+                        $cd->{core_deps}{$mod} //=
+                            $cd->{sub_src_core_deps}{$sub}{$mod};
+                    }
+                }
+                "sub $sub" . (ref($cd->{sub_srcs}{$sub}) eq 'ARRAY' ?
+                "($cd->{sub_srcs}{$sub}[0]) {\n$cd->{sub_srcs}{$sub}[1]}\n\n" : " {\n$cd->{sub_srcs}{$sub}}\n\n")}
                 sort keys %{$cd->{sub_srcs}}),
 
             ("### code_before_parse_cmdline_options\n", $args{code_before_parse_cmdline_options}, "\n") x !!$args{code_before_parse_cmdline_options},
@@ -1532,14 +1528,6 @@ _
 
   WRITE_OUTPUT:
     {
-        if ($action eq 'dump-raw') {
-            return [200, "OK", $cd];
-        } elsif ($action eq 'gen-script-deps') {
-            return [200, "OK", $cd];
-        }
-
-        # action is 'gen-script'
-
         my ($fh, $output_is_stdout);
         if (!defined($args{output_file}) || $args{output_file} eq '-') {
             $output_is_stdout++;
