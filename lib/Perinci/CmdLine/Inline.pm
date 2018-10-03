@@ -1555,7 +1555,6 @@ _
 
         if ($output_is_stdout) {
             return [200, "OK", $cd->{result}, {
-                'cmdline.skip_format' => 1,
                 'func.raw_result' => $cd,
             }];
         } else {
