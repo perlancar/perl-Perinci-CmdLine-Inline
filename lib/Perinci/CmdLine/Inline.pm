@@ -183,7 +183,7 @@ sub _gen_pci_check_args {
             push @l2, ' if (exists $args->{"'.$arg.'"}) {';
             push @l2, ' return [400, "You specified '.$arg_opts->[0].' but also argument #'.$arg_spec->{pos}.'"];';
             push @l2, " } else {";
-            if ($arg_spec->{greedy}) {
+            if ($arg_spec->{slurpy} // $arg_spec->{greedy}) {
                 push @l2, ' $args->{"'.$arg.'"} = [splice(@ARGV, '.$arg_spec->{pos}.')];';
             } else {
                 push @l2, ' $args->{"'.$arg.'"} = delete($ARGV['.$arg_spec->{pos}.']);';
