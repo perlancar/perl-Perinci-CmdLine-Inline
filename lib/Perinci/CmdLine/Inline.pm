@@ -79,6 +79,7 @@ sub _gen_read_env {
     return "" unless $cd->{gen_args}{read_env};
 
     _pack_module($cd, "Complete::Bash");
+    _pack_module($cd, "Log::ger"); # required by Complete::Bash
     push @l2, "{\n";
     push @l2, '  last unless $_pci_r->{read_env};', "\n";
     push @l2, '  my $env = $ENV{', dmp($cd->{gen_args}{env_name}), '};', "\n";
