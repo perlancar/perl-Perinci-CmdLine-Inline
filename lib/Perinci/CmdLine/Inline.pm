@@ -1,6 +1,8 @@
 package Perinci::CmdLine::Inline;
 
+# AUTHORITY
 # DATE
+# DIST
 # VERSION
 
 # line 820, don't know how to turn off this warning?
@@ -1243,9 +1245,8 @@ _
             require Module::CoreList;
             require Data::Clean::JSON;
             my $cleanser = Data::Clean::JSON->new(
-                # pick this noncore PP module instead of the default non-core XS
-                # module Data::Clone. perl has core module Storable, but
-                # Storable still chooses to croak on Regexp objects.
+                # TODO: probably change back to using Storable since 3.08+
+                # now support Regexp objects.
                 '!clone_func' => 'Clone::PP::clone',
             );
             my $src = $cleanser->{_cd}{src};
