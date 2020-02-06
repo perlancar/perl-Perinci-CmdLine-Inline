@@ -420,6 +420,7 @@ sub _gen_common_opt_handler {
             require Perinci::CmdLine::Help;
             my $res = Perinci::CmdLine::Help::gen_help(
                 meta => $cd->{metas}{''},
+                meta_is_normalized => 1,
                 common_opts => $cd->{copts},
                 program_name => $cd->{script_name},
             );
