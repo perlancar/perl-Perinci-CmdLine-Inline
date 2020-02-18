@@ -100,15 +100,26 @@ sub _gen_enable_log {
 
     _pack_module($cd, 'Log::ger');
     _pack_module($cd, 'Log::ger::Output');
+    _pack_module($cd, 'Log::ger::Output::Composite');
     _pack_module($cd, 'Log::ger::Output::Screen');
+    _pack_module($cd, 'Log::ger::Output::SimpleFile');
+    _pack_module($cd, "Data::Dmp"); # required by Log::ger::Output::Composite
     _pack_module($cd, 'Log::ger::Util');
 
     my @l;
 
+    #push @l, "### code_before_enable_logging\n";
+    #push @l, $cd->{gen_args}{code_before_enable_logging}, "\n" if defined $cd->{gen_args}{code_before_enable_logging};
+    #push @l, "\n";
+
     push @l, "### enable logging\n";
-    push @l, 'require Log::ger::Output; Log::ger::Output->set("Screen", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[0] },);', "\n";
+    push @l, 'require Log::ger::Output; Log::ger::Output->set("Composite", outputs => { Screen => { formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[0] } } });', "\n";
     push @l, 'require Log::ger; Log::ger->import;', "\n";
     push @l, "\n";
+
+    #push @l, "### code_after_enable_logging\n";
+    #push @l, $cd->{gen_args}{code_after_enable_logging}, "\n" if defined $cd->{gen_args}{code_after_enable_logging};
+    #push @l, "\n";
 
     join("", @l);
 }
@@ -919,6 +930,7 @@ _
         },
 
         code_after_shebang => {
+            summary => 'Put at the very beginning of generated script, after the shebang line',
             schema => 'str*',
             tags => ['category:extra-code'],
         },
@@ -926,7 +938,16 @@ _
             schema => 'str*',
             tags => ['category:extra-code'],
         },
+        #code_before_enable_logging => {
+        #    schema => 'str*',
+        #    tags => ['category:extra-code'],
+        #},
+        #code_after_enable_logging => {
+        #    schema => 'str*',
+        #    tags => ['category:extra-code'],
+        #},
         code_after_end => {
+            summary => 'Put at the very end of generated script',
             schema => 'str*',
             tags => ['category:extra-code'],
         },
@@ -1493,7 +1514,7 @@ _
             "use strict;\n",
             "#use warnings;\n\n",
 
-            "# modules\n",
+            "# load modules\n",
             (map {"require $_;\n"} sort keys %{$cd->{req_modules}}),
             "\n",
 
