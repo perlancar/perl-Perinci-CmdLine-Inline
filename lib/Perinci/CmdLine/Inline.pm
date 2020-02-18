@@ -421,6 +421,7 @@ sub _gen_common_opt_handler {
             require Perinci::CmdLine::Help;
             my $res = Perinci::CmdLine::Help::gen_help(
                 meta => $cd->{metas}{''},
+                meta_is_normalized => 1,
                 common_opts => $cd->{copts},
                 program_name => $cd->{script_name},
             );
@@ -1246,9 +1247,8 @@ _
             require Module::CoreList;
             require Data::Clean::JSON;
             my $cleanser = Data::Clean::JSON->new(
-                # pick this noncore PP module instead of the default non-core XS
-                # module Data::Clone. perl has core module Storable, but
-                # Storable still chooses to croak on Regexp objects.
+                # TODO: probably change back to using Storable since 3.08+
+                # now support Regexp objects.
                 '!clone_func' => 'Clone::PP::clone',
             );
             my $src = $cleanser->{_cd}{src};

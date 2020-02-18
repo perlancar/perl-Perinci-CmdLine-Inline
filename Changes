@@ -1,3 +1,11 @@
+0.546   2020-02-06  Released-By: PERLANCAR; Urgency: medium
+
+	- Adjust to Perinci::CmdLine::Help 0.172 (must now pass
+	  meta_is_normalized=1 or meta will be normalized first).
+
+	- [doc] Update comment about Storable 3.08+ now supports Regexp objecs.
+
+
 0.545   2019-04-15  Released-By: PERLANCAR
 
 	- Observe argument spec property 'slurpy' in addition to 'greedy'
