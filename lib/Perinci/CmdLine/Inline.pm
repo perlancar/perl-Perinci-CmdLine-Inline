@@ -1,12 +1,15 @@
-package Perinci::CmdLine::Inline;
-
-# DATE
-# VERSION
-
 # line 820, don't know how to turn off this warning?
 ## no critic (ValuesAndExpressions::ProhibitCommaSeparatedStatements)
+
 # false positive? perlcritic gives line 2333 which is way more than the number of lines of this script
 ## no critic (InputOutput::RequireBriefOpen)
+
+package Perinci::CmdLine::Inline;
+
+# AUTHORITY
+# DATE
+# DIST
+# VERSION
 
 use 5.010001;
 use strict 'subs', 'vars';
@@ -1443,7 +1446,9 @@ _
             "",
             $shebang_line, "\n",
 
-            ("### code_after_shebang\n", $args{code_after_shebang}, "\n") x !!$args{code_after_shebang},
+            "### code_after_shebang\n",
+            ($args{code_after_shebang}, "\n") x !!$args{code_after_shebang},
+            "\n",
 
             "# PERICMD_INLINE_SCRIPT: ", do {
                 my %tmp = %args;
@@ -1513,7 +1518,9 @@ _
                 "($cd->{sub_srcs}{$sub}[0]) {\n$cd->{sub_srcs}{$sub}[1]}\n\n" : " {\n$cd->{sub_srcs}{$sub}}\n\n")}
                 sort keys %{$cd->{sub_srcs}}),
 
-            ("### code_before_parse_cmdline_options\n", $args{code_before_parse_cmdline_options}, "\n") x !!$args{code_before_parse_cmdline_options},
+            "### code_before_parse_cmdline_options\n",
+            ($args{code_before_parse_cmdline_options}, "\n") x !!$args{code_before_parse_cmdline_options},
+            "\n",
 
             @l,
 
@@ -1523,7 +1530,9 @@ _
 
             $dp_code3,
 
-            ("### code_after_end\n", $args{code_after_end}, "\n") x !!$args{code_after_end},
+            "### code_after_end\n",
+            ($args{code_after_end}, "\n") x !!$args{code_after_end},
+            "\n",
         );
     }
 
