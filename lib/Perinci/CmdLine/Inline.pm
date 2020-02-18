@@ -1,8 +1,11 @@
+# false positive? line 825
+## no critic: Modules::RequireFilenameMatchesPackage
+
 # line 820, don't know how to turn off this warning?
-## no critic (ValuesAndExpressions::ProhibitCommaSeparatedStatements)
+## no critic: ValuesAndExpressions::ProhibitCommaSeparatedStatements
 
 # false positive? perlcritic gives line 2333 which is way more than the number of lines of this script
-## no critic (InputOutput::RequireBriefOpen)
+## no critic: InputOutput::RequireBriefOpen
 
 package Perinci::CmdLine::Inline;
 
