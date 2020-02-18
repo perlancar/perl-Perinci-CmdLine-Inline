@@ -100,15 +100,32 @@ sub _gen_enable_log {
 
     _pack_module($cd, 'Log::ger');
     _pack_module($cd, 'Log::ger::Output');
+    _pack_module($cd, 'Log::ger::Output::Composite');
     _pack_module($cd, 'Log::ger::Output::Screen');
+    _pack_module($cd, 'Log::ger::Output::SimpleFile');
+    _pack_module($cd, "Data::Dmp"); # required by Log::ger::Output::Composite
     _pack_module($cd, 'Log::ger::Util');
 
     my @l;
 
+    push @l, "### begin code_before_enable_logging\n";
+    push @l, $cd->{gen_args}{code_before_enable_logging}, "\n" if defined $cd->{gen_args}{code_before_enable_logging};
+    push @l, "### end code_before_enable_logging\n";
+
     push @l, "### enable logging\n";
-    push @l, 'require Log::ger::Output; Log::ger::Output->set("Screen", formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[0] },);', "\n";
+    push @l, '$_pci_log_outputs->{Screen} = { conf => { formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[0] } } };', "\n";
+
+    push @l, "#### begin code_add_extra_log_outputs\n";
+    push @l, $cd->{gen_args}{code_add_extra_log_outputs}, "\n" if defined $cd->{gen_args}{code_add_extra_log_outputs};
+    push @l, "#### end code_add_extra_log_outputs\n";
+
+    push @l, 'require Log::ger::Output; Log::ger::Output->set("Composite", outputs => $_pci_log_outputs);', "\n";
     push @l, 'require Log::ger; Log::ger->import;', "\n";
     push @l, "\n";
+
+    push @l, "### begin code_after_enable_logging\n";
+    push @l, $cd->{gen_args}{code_after_enable_logging}, "\n" if defined $cd->{gen_args}{code_after_enable_logging};
+    push @l, "### end code_after_enable_logging\n";
 
     join("", @l);
 }
@@ -449,13 +466,13 @@ sub _gen_common_opt_handler {
                     '\n"; ';
         push @l, 'exit 0';
     } elsif ($co eq 'log_level') {
-        push @l, 'if ($_[1] eq "trace") { require Log::ger::Util; Log::ger::Util::set_level("trace") } ';
-        push @l, 'if ($_[1] eq "debug") { require Log::ger::Util; Log::ger::Util::set_level("debug") } ';
-        push @l, 'if ($_[1] eq "info" ) { require Log::ger::Util; Log::ger::Util::set_level("info" ) } ';
-        push @l, 'if ($_[1] eq "error") { require Log::ger::Util; Log::ger::Util::set_level("warn" ) } ';
-        push @l, 'if ($_[1] eq "fatal") { require Log::ger::Util; Log::ger::Util::set_level("debug") } ';
-        push @l, 'if ($_[1] eq "none")  { require Log::ger::Util; Log::ger::Util::set_level("off"  ) } ';
-        push @l, 'if ($_[1] eq "off")   { require Log::ger::Util; Log::ger::Util::set_level("off"  ) } ';
+        push @l, 'if ($_[1] eq "trace") { require Log::ger::Util; Log::ger::Util::set_level("trace"); Log::ger::Output::Composite::set_level("trace") } ';
+        push @l, 'if ($_[1] eq "debug") { require Log::ger::Util; Log::ger::Util::set_level("debug"); Log::ger::Output::Composite::set_level("debug") } ';
+        push @l, 'if ($_[1] eq "info" ) { require Log::ger::Util; Log::ger::Util::set_level("info" ); Log::ger::Output::Composite::set_level("info")  } ';
+        push @l, 'if ($_[1] eq "error") { require Log::ger::Util; Log::ger::Util::set_level("warn" ); Log::ger::Output::Composite::set_level("warn")  } ';
+        push @l, 'if ($_[1] eq "fatal") { require Log::ger::Util; Log::ger::Util::set_level("debug"); Log::ger::Output::Composite::set_level("debug") } ';
+        push @l, 'if ($_[1] eq "none")  { require Log::ger::Util; Log::ger::Util::set_level("off"  ); Log::ger::Output::Composite::set_level("off")   } ';
+        push @l, 'if ($_[1] eq "off")   { require Log::ger::Util; Log::ger::Util::set_level("off"  ); Log::ger::Output::Composite::set_level("off")   } ';
         push @l, '$_pci_r->{log_level} = $_[1];';
     } elsif ($co eq 'trace') {
         push @l, 'require Log::ger::Util; Log::ger::Util::set_level("trace"); $_pci_r->{log_level} = "trace";';
@@ -920,6 +937,7 @@ _
         },
 
         code_after_shebang => {
+            summary => 'Put at the very beginning of generated script, after the shebang line',
             schema => 'str*',
             tags => ['category:extra-code'],
         },
@@ -927,7 +945,20 @@ _
             schema => 'str*',
             tags => ['category:extra-code'],
         },
+        code_before_enable_logging => {
+            schema => 'str*',
+            tags => ['category:extra-code'],
+        },
+        code_add_extra_log_outputs => {
+            schema => 'str*',
+            tags => ['category:extra-code'],
+        },
+        code_after_enable_logging => {
+            schema => 'str*',
+            tags => ['category:extra-code'],
+        },
         code_after_end => {
+            summary => 'Put at the very end of generated script',
             schema => 'str*',
             tags => ['category:extra-code'],
         },
@@ -1140,6 +1171,8 @@ sub gen_inline_pericmd_script {
                     getopt  => "quiet",
                     summary => "Set logging level to error",
                 };
+
+                $cd->{vars}{'$_pci_log_outputs'} = {};
             }
             unless ($args{skip_format}) {
                 $copts{json} = $Perinci::CmdLine::Base::copts{json};
@@ -1446,9 +1479,9 @@ _
             "",
             $shebang_line, "\n",
 
-            "### code_after_shebang\n",
+            "### begin code_after_shebang\n",
             ($args{code_after_shebang}, "\n") x !!$args{code_after_shebang},
-            "\n",
+            "### end code_after_shebang\n",
 
             "# PERICMD_INLINE_SCRIPT: ", do {
                 my %tmp = %args;
@@ -1493,17 +1526,17 @@ _
             "use strict;\n",
             "#use warnings;\n\n",
 
-            "# modules\n",
+            "# load modules\n",
             (map {"require $_;\n"} sort keys %{$cd->{req_modules}}),
             "\n",
 
             "\n",
 
-            $args{log} ? _gen_enable_log($cd) : '',
-
             "### declare global variables\n\n",
             (map { "our $_" . (defined($cd->{vars}{$_}) ? " = ".dmp($cd->{vars}{$_}) : "").";\n" } sort keys %{$cd->{vars}}),
             (keys(%{$cd->{vars}}) ? "\n" : ""),
+
+            $args{log} ? _gen_enable_log($cd) : '',
 
             "### declare subroutines\n\n",
             (map {
@@ -1518,9 +1551,9 @@ _
                 "($cd->{sub_srcs}{$sub}[0]) {\n$cd->{sub_srcs}{$sub}[1]}\n\n" : " {\n$cd->{sub_srcs}{$sub}}\n\n")}
                 sort keys %{$cd->{sub_srcs}}),
 
-            "### code_before_parse_cmdline_options\n",
+            "### begin code_before_parse_cmdline_options\n",
             ($args{code_before_parse_cmdline_options}, "\n") x !!$args{code_before_parse_cmdline_options},
-            "\n",
+            "### end code_before_parse_cmdline_options\n",
 
             @l,
 
@@ -1530,9 +1563,9 @@ _
 
             $dp_code3,
 
-            "### code_after_end\n",
+            "### begin code_after_end\n",
             ($args{code_after_end}, "\n") x !!$args{code_after_end},
-            "\n",
+            "### end code_after_end\n",
         );
     }
 
