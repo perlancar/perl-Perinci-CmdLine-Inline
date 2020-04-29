@@ -1,3 +1,9 @@
+0.549   2020-04-29  Released-By: PERLANCAR; Urgency: medium
+
+	- Tweak Rinci metadata: replace deprecated
+	  x.schema.{,element_}entity with more specific schema.
+
+
 0.548   2020-04-05  Released-By: PERLANCAR; Urgency: medium
 
 	- Support common option --page-result like in
