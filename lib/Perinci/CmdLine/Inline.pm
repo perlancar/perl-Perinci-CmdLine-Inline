@@ -775,8 +775,7 @@ my %pericmd_attrs = (
 Currently not implemented in Perinci::CmdLine::Inline.
 
 _
-        schema => ['array*', of=>'str*'],
-        'x.schema.element_entity' => 'riap_url',
+        schema => ['array*', of=>'riap::url*'],
     },
     skip_format => {
         summary => 'Assume that function returns raw text that need '.
@@ -936,8 +935,7 @@ _
         include => {
             summary => 'Include extra modules',
             'summary.alt.plurality.singular' => 'Include an extra module',
-            schema => ['array*', of=>'str*'],
-            'x.schema.element_entity' => 'modulename',
+            schema => ['array*', of=>'perl::modname*'],
             cmdline_aliases => {I=>{}},
         },
 
@@ -1004,8 +1002,7 @@ _
 
         output_file => {
             summary => 'Set output file, defaults to stdout',
-            schema => 'str*',
-            'x.schema.entity' => 'filename',
+            schema => 'filename*',
             cmdline_aliases => {o=>{}},
             tags => ['category:output'],
         },
