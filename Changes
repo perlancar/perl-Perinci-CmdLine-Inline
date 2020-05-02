@@ -1,3 +1,12 @@
+0.550   2020-05-02  Released-By: PERLANCAR; Urgency: medium
+
+	- When outputing streaming output, don't JSON-encode simple
+	  (defined scalar) records.
+
+	- Add Log::ger::Output::{Composite,SimpleFile} to prereq
+	  [RT#132474].
+
+
 0.549   2020-04-29  Released-By: PERLANCAR; Urgency: medium
 
 	- Tweak Rinci metadata: replace deprecated
