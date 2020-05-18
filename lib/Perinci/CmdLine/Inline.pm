@@ -775,8 +775,7 @@ my %pericmd_attrs = (
 Currently not implemented in Perinci::CmdLine::Inline.
 
 _
-        schema => ['array*', of=>'str*'],
-        'x.schema.element_entity' => 'riap_url',
+        schema => ['array*', of=>'riap::url*'],
     },
     skip_format => {
         summary => 'Assume that function returns raw text that need '.
@@ -936,8 +935,7 @@ _
         include => {
             summary => 'Include extra modules',
             'summary.alt.plurality.singular' => 'Include an extra module',
-            schema => ['array*', of=>'str*'],
-            'x.schema.element_entity' => 'modulename',
+            schema => ['array*', of=>'perl::modname*'],
             cmdline_aliases => {I=>{}},
         },
 
@@ -1004,8 +1002,7 @@ _
 
         output_file => {
             summary => 'Set output file, defaults to stdout',
-            schema => 'str*',
-            'x.schema.entity' => 'filename',
+            schema => 'filename*',
             cmdline_aliases => {o=>{}},
             tags => ['category:output'],
         },
@@ -1413,7 +1410,7 @@ _
         push @l, 'if ($use_utf8) { binmode STDOUT, ":encoding(utf8)" }', "\n";
 
         push @l, 'if ($is_stream) {', "\n";
-        push @l, '    my $code = $_pci_r->{res}[2]; if (ref($code) ne "CODE") { die "Result is a stream but no coderef provided" } if ($_pci_meta_result_type_is_simple) { while(defined(my $l=$code->())) { print $fh $l; print $fh "\n" unless $_pci_meta_result_type eq "buf"; } } else { while (defined(my $rec=$code->())) { print $fh _pci_json()->encode($rec),"\n" } }', "\n";
+        push @l, '    my $code = $_pci_r->{res}[2]; if (ref($code) ne "CODE") { die "Result is a stream but no coderef provided" } if ($_pci_meta_result_type_is_simple) { while(defined(my $l=$code->())) { print $fh $l; print $fh "\n" unless $_pci_meta_result_type eq "buf"; } } else { while (defined(my $rec=$code->())) { if (!defined($rec) || ref $rec) { print $fh _pci_json()->encode($rec),"\n" } else { print $fh $rec,"\n" } } }', "\n";
         push @l, '} else {', "\n";
         push @l, '    print $fh $fres;', "\n";
         push @l, '}', "\n";
