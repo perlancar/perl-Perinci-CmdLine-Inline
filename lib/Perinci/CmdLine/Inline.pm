@@ -1374,7 +1374,7 @@ _
                 push @l, '    $_pci_meta_result_type_is_simple = 1;'."\n" if Data::Sah::Util::Type::is_simple($meta->{result}{schema} // '');
                 push @l, "    require $cd->{sc_mods}{$sc_name};\n" if $cd->{sc_mods}{$sc_name};
                 push @l, '    eval { $_pci_r->{res} = ', $cd->{func_names}{$sc_name}, ($cd->{args_as}{$sc_name} eq 'hashref' ? '(\\%_pci_args)' : '(%_pci_args)'), ' };', "\n";
-                push @l, '    if ($@) { $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
+                push @l, '    if ($@) { die if $ENV{PERINCI_CMDLINE_INLINE_DEBUG_DIE}; $_pci_r->{res} = [500, "Function died: $@"] }', "\n";
                 if ($meta->{result_naked}) {
                     push @l, '    $_pci_r->{res} = [200, "OK (envelope added by Perinci::CmdLine::Inline)", $_pci_r->{res}];', "\n";
                 }
@@ -1671,6 +1671,16 @@ Generated script's subroutine source codes. Keys are subroutines' names and
 values are subroutines' source codes.
 
 =back
+
+
+=head1 ENVIRONMENT (GENERATED SCRIPTS)
+
+These are environment variables observed by the generated scripts.
+
+=head2 PERINCI_CMDLINE_INLINE_DEBUG_DIE
+
+Bool. If set to true, then will rethrow exception instead of converting it into
+enveloped result. This makes debugging easier.
 
 
 =head1 FAQ
