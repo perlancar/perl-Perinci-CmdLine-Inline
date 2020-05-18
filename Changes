@@ -1,3 +1,8 @@
+0.549   2020-05-18  Released-By: PERLANCAR; Urgency: medium
+
+	- Observe PERINCI_CMDLINE_INLINE_DEBUG_DIE.
+
+
 0.548   2020-04-05  Released-By: PERLANCAR; Urgency: medium
 
 	- Support common option --page-result like in
