@@ -145,6 +145,29 @@ sub _gen_read_config {
     _pack_module($cd, "Config::IOD::Reader"); # required by Perinci::CmdLine::Util::Config
     _pack_module($cd, "Config::IOD::Base"); # required by Config::IOD::Reader
     _pack_module($cd, "Data::Sah::Normalize"); # required by Perinci::CmdLine::Util::Config
+    _pack_module($cd, "Data::Sah::Resolve"); # required by Perinci::CmdLine::Util::Config
+
+    # required by Data::Sah::Resolve
+    _pack_module($cd, "Data::Sah::Type::all");
+    _pack_module($cd, "Data::Sah::Type::any");
+    _pack_module($cd, "Data::Sah::Type::array");
+    _pack_module($cd, "Data::Sah::Type::bool");
+    _pack_module($cd, "Data::Sah::Type::buf");
+    _pack_module($cd, "Data::Sah::Type::cistr");
+    _pack_module($cd, "Data::Sah::Type::code");
+    _pack_module($cd, "Data::Sah::Type::date");
+    _pack_module($cd, "Data::Sah::Type::datenotime");
+    _pack_module($cd, "Data::Sah::Type::datetime");
+    _pack_module($cd, "Data::Sah::Type::duration");
+    _pack_module($cd, "Data::Sah::Type::float");
+    _pack_module($cd, "Data::Sah::Type::hash");
+    _pack_module($cd, "Data::Sah::Type::int");
+    _pack_module($cd, "Data::Sah::Type::num");
+    _pack_module($cd, "Data::Sah::Type::obj");
+    _pack_module($cd, "Data::Sah::Type::re");
+    _pack_module($cd, "Data::Sah::Type::str");
+    _pack_module($cd, "Data::Sah::Type::undef");
+
     _pack_module($cd, "Perinci::Sub::Normalize"); # required by Perinci::CmdLine::Util::Config
     _pack_module($cd, "Sah::Schema::rinci::function_meta"); # required by Perinci::Sub::Normalize
     push @l2, 'log_trace("Reading config file(s) ...");', "\n" if $cd->{gen_args}{log};
