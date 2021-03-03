@@ -1158,7 +1158,7 @@ sub gen_inline_pericmd_script {
         "Perinci::Result::Format::Lite",
 
         # this will be removed if we don't need formatting
-        "Text::Table::Tiny",
+        "Text::Table::Sprintf",
 
         @{ $args{include} // [] },
     ) {
@@ -1452,7 +1452,7 @@ _
         if ($args{skip_format}) {
             delete $cd->{module_srcs}{'Data::Check::Structure'};
             delete $cd->{module_srcs}{'Perinci::Result::Format::Lite'};
-            delete $cd->{module_srcs}{'Text::Table::Tiny'};
+            delete $cd->{module_srcs}{'Text::Table::Sprintf'};
         }
 
         if ($args{pass_cmdline_object}) {
@@ -1677,7 +1677,7 @@ dependency, these modules' source codes are included in the generated script
 using the datapack technique (see L<Module::DataPack>).
 
 Among the modules are L<Getopt::Long::EvenLess> to parse command-line options,
-L<Text::Table::Tiny> to produce text table output, and also a few generated
+L<Text::Table::Sprintf> to produce text table output, and also a few generated
 modules to modularize the generated script's structure.
 
 =item * vars => hash
