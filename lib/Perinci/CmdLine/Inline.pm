@@ -9,11 +9,6 @@
 
 package Perinci::CmdLine::Inline;
 
-# AUTHORITY
-# DATE
-# DIST
-# VERSION
-
 use 5.010001;
 use strict 'subs', 'vars';
 use warnings;
@@ -27,6 +22,11 @@ use Perinci::Sub::Util qw(err);
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(gen_inline_pericmd_script);
+
+# AUTHORITY
+# DATE
+# DIST
+# VERSION
 
 our %SPEC;
 
@@ -1543,8 +1543,6 @@ _
             "# You probably should not manually edit this file.\n\n",
 
             # for dzil
-            "# DATE\n",
-            "# VERSION\n",
             "# PODNAME: ", ($args{script_name} // ''), "\n",
             do {
                 my $abstract = $args{script_summary} // $cd->{metas}{''}{summary};
@@ -1570,6 +1568,12 @@ _
             "\n",
 
             "### declare global variables\n\n",
+            # for dzil
+            "# AUTHORITY\n",
+            "# DATE\n",
+            "# DIST\n",
+            "# VERSION\n",
+            "\n",
             (map { "our $_" . (defined($cd->{vars}{$_}) ? " = ".dmp($cd->{vars}{$_}) : "").";\n" } sort keys %{$cd->{vars}}),
             (keys(%{$cd->{vars}}) ? "\n" : ""),
 
