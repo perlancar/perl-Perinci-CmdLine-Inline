@@ -520,7 +520,7 @@ sub _gen_common_opt_handler {
     } elsif ($co eq 'format') {
         push @l, '$_pci_r->{format} = $_[1];';
     } elsif ($co eq 'json') {
-        push @l, '$_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json"; ## no critic: InputOutput::ProhibitInteractiveTest';
+        push @l, '$_pci_r->{format} = (-t STDOUT) ? "json-pretty" : "json"; ## no critic InputOutput::ProhibitInteractiveTest' . "\n";
     } elsif ($co eq 'naked_res') {
         push @l, '$_pci_r->{naked_res} = 1;';
     } elsif ($co eq 'no_naked_res') {
