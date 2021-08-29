@@ -140,6 +140,10 @@ sub _gen_read_config {
     return "" unless $cd->{gen_args}{read_config};
 
     push @l2, 'if ($_pci_r->{read_config}) {', "\n";
+
+    # TOOO: these are manual selection and will be replaced with a recursive
+    # tracer
+
     _pack_module($cd, "Perinci::CmdLine::Util::Config");
     _pack_module($cd, "Log::ger"); # required by Perinci::CmdLine::Util::Config
     _pack_module($cd, "Config::IOD::Reader"); # required by Perinci::CmdLine::Util::Config
@@ -167,6 +171,12 @@ sub _gen_read_config {
     _pack_module($cd, "Data::Sah::Type::re");
     _pack_module($cd, "Data::Sah::Type::str");
     _pack_module($cd, "Data::Sah::Type::undef");
+    _pack_module($cd, "Data::Sah::Util::Role"); # required by Data::Sah::Type::*
+    _pack_module($cd, "Role::Tiny"); # required by Data::Sah::Type::*
+    _pack_module($cd, "Role::Tiny::With"); # required by Data::Sah::Type::*
+    _pack_module($cd, "Data::Sah::Type::BaseType"); # required by Data::Sah::Type::*
+    _pack_module($cd, "Data::Sah::Type::Comparable"); # required by Data::Sah::Type::*
+    _pack_module($cd, "Data::Sah::Type::HasElems"); # required by Data::Sah::Type::*
 
     _pack_module($cd, "Perinci::Sub::Normalize"); # required by Perinci::CmdLine::Util::Config
     _pack_module($cd, "Sah::Schema::rinci::function_meta"); # required by Perinci::Sub::Normalize
