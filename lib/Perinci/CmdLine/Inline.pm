@@ -1005,9 +1005,9 @@ _
             description => <<'_',
 
 By default, Perinci::CmdLine::Inline will strive to make the script freestanding
-and require core modules. A dependency to a non-core module will cause failure
-(unless `pack_deps` option is set to false). However, you can pass a list of
-modules that is allowed here.
+and require only core Perl modules. A dependency to a non-core module will cause
+failure (unless `pack_deps` option is set to false). However, you can pass a
+list of modules that is allowed here.
 
 _
         },
