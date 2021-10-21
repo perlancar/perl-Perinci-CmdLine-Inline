@@ -1547,6 +1547,8 @@ _
 
             "# You probably should not manually edit this file.\n\n",
 
+            "## no critic: TestingAndDebugging::RequireUseStrict\n\n", # fatpack/datapack code is not using strict currently
+
             # for dzil
             "# PODNAME: ", ($args{script_name} // ''), "\n",
             do {
