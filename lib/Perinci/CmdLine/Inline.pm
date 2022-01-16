@@ -116,7 +116,7 @@ sub _gen_enable_log {
     push @l, "### end code_before_enable_logging\n";
 
     push @l, "### enable logging\n";
-    push @l, '$_pci_log_outputs->{Screen} = { conf => { formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[0] } } };', "\n";
+    push @l, '$_pci_log_outputs->{Screen} = { conf => { colorize_tags => 1, formatter => sub { '.dmp("$cd->{script_name}: ").' . $_[0] } } };', "\n";
 
     push @l, "#### begin code_add_extra_log_outputs\n";
     push @l, $cd->{gen_args}{code_add_extra_log_outputs}, "\n" if defined $cd->{gen_args}{code_add_extra_log_outputs};
